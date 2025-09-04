@@ -22,6 +22,8 @@ def run_notebook(notebook_path, output_dir="build", keep_python=False, verbose=T
     """
     Convert notebook to Python and execute it
     
+    Sets matplotlib backend to non-interactive mode to prevent chart popups.
+    
     Args:
         notebook_path (str): Path to the notebook file
         output_dir (str): Directory to save outputs (default: build folder)
@@ -71,6 +73,21 @@ def run_notebook(notebook_path, output_dir="build", keep_python=False, verbose=T
         # Set environment to prevent chart popups
         env = os.environ.copy()
         env['MPLBACKEND'] = 'Agg'  # Prevent matplotlib GUI
+        
+        # Add matplotlib backend setting to the Python file
+        try:
+            with open(python_file, 'r', encoding='utf-8') as f:
+                content = f.read()
+            
+            # Add matplotlib backend setting at the top if matplotlib is imported
+            if 'import matplotlib' in content and 'matplotlib.use(' not in content:
+                content = 'import matplotlib\nmatplotlib.use("Agg")\n' + content
+                
+                with open(python_file, 'w', encoding='utf-8') as f:
+                    f.write(content)
+                print("📊 Set matplotlib backend to non-interactive mode")
+        except Exception as e:
+            print(f"⚠️  Warning: Could not set matplotlib backend: {e}")
         
         # Add parent directory to Python path for module imports
         python_path = str(notebook_path.parent)
