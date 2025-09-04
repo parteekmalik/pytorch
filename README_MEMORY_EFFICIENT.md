@@ -16,11 +16,8 @@ pytorch/
 │   ├── data_utils.py                   # Data processing utilities
 │   └── model_utils.py                  # Model creation and training utilities
 └── helpers/                            # Test and helper scripts
-    ├── test_all_notebooks.py          # Test all notebooks
-    ├── test_common_download.py        # Test data download functions
-    ├── test_complete_notebooks.py     # Test complete notebook execution
-    ├── test_data_download.py          # Test data download utilities
-    ├── test_imports.py                # Test utility imports
+    ├── test_utils_comprehensive.py    # Comprehensive test suite for all utils
+    ├── test_imports.py                # Quick import test
     ├── create_proper_preprocessing.py # Preprocessing utilities
     ├── run_notebook.py                # Notebook execution utilities
     └── setup_environment.py           # Environment setup utilities
@@ -112,13 +109,64 @@ jupyter notebook crypto_prediction_ondemand.ipynb
 jupyter notebook crypto_prediction.ipynb
 ```
 
+## 🎮 Advanced Execution Options
+
+The project includes a highly customizable notebook runner with multiple execution modes:
+
+### **Interactive Modes**
+
+```bash
+# Jupyter Notebook (traditional)
+python helpers/notebook_runner.py --jupyter original
+
+# JupyterLab (modern interface)
+python helpers/notebook_runner.py --jupyterlab ondemand
+```
+
+### **Programmatic Modes**
+
+```bash
+# Full notebook execution
+python helpers/notebook_runner.py --execute original
+
+# Extract and run code directly (first 10 cells)
+python helpers/notebook_runner.py --extract original --max-cells 10
+
+# Run specific cells only
+python helpers/notebook_runner.py original --cells 0 1 2 3
+
+# Run with memory monitoring
+python helpers/notebook_runner.py original --memory
+```
+
+### **Conversion Modes**
+
+```bash
+# Convert to HTML for sharing
+python helpers/notebook_runner.py original --convert --output-dir reports
+
+# List available notebooks
+python helpers/notebook_runner.py --list
+
+# Validate environment
+python helpers/notebook_runner.py --validate
+```
+
+### **Available Notebooks**
+
+- `original`: `crypto_prediction.ipynb` - Original preprocessing approach
+- `ondemand`: `crypto_prediction_ondemand.ipynb` - On-demand processing approach
+
 ## 🧪 Testing
 
 Run tests to verify everything works:
 
 ```bash
-# Test all notebooks and utilities
-python helpers/test_complete_notebooks.py
+# Test all utilities comprehensively
+python helpers/test_utils_comprehensive.py
+
+# Quick import test
+python helpers/test_imports.py
 ```
 
 ## ⚙️ Configuration

@@ -48,29 +48,35 @@ def create_lightweight_lstm_model(input_shape, output_dim, lstm_units=25, dropou
     
     return model
 
-def scale_data(X, y, scaler_X=None, scaler_y=None, fit_scalers=True):
-    """Scale data for LSTM training."""
-    if fit_scalers:
-        scaler_X = MinMaxScaler()
-        scaler_y = MinMaxScaler()
-        
-        # Reshape for scaling
-        X_reshaped = X.reshape(-1, X.shape[-1])
-        X_scaled = scaler_X.fit_transform(X_reshaped)
-        X_scaled = X_scaled.reshape(X.shape)
-        
-        y_scaled = scaler_y.fit_transform(y)
-        
-        return X_scaled, y_scaled, scaler_X, scaler_y
-    else:
-        # Use existing scalers
-        X_reshaped = X.reshape(-1, X.shape[-1])
-        X_scaled = scaler_X.transform(X_reshaped)
-        X_scaled = X_scaled.reshape(X.shape)
-        
-        y_scaled = scaler_y.transform(y)
-        
-        return X_scaled, y_scaled
+def scale_data(X_train, X_test, y_train, y_test):
+    """Scale data for LSTM training with train/test split."""
+    print("🔄 Scaling data for LSTM training...")
+    
+    # Create scalers
+    scaler_X = MinMaxScaler()
+    scaler_y = MinMaxScaler()
+    
+    # Reshape X data for scaling (3D -> 2D -> 3D)
+    X_train_reshaped = X_train.reshape(-1, X_train.shape[-1])
+    X_test_reshaped = X_test.reshape(-1, X_test.shape[-1])
+    
+    # Fit scalers on training data
+    X_train_scaled = scaler_X.fit_transform(X_train_reshaped)
+    X_test_scaled = scaler_X.transform(X_test_reshaped)
+    
+    # Reshape back to 3D
+    X_train_scaled = X_train_scaled.reshape(X_train.shape)
+    X_test_scaled = X_test_scaled.reshape(X_test.shape)
+    
+    # Scale y data (2D)
+    y_train_scaled = scaler_y.fit_transform(y_train)
+    y_test_scaled = scaler_y.transform(y_test)
+    
+    print(f"✅ Data scaling completed!")
+    print(f"   X_train range: {X_train_scaled.min():.4f} to {X_train_scaled.max():.4f}")
+    print(f"   y_train range: {y_train_scaled.min():.4f} to {y_train_scaled.max():.4f}")
+    
+    return X_train_scaled, X_test_scaled, y_train_scaled, y_test_scaled, scaler_X, scaler_y
 
 def train_model_memory_efficient(model, X_train, y_train, X_test, y_test, 
                                 epochs=50, batch_size=32, verbose=1):
