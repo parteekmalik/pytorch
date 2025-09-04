@@ -1,187 +1,295 @@
-# 🚀 Notebook Runner - Customizable Execution System
+# Simple Notebook Runner Guide
 
-A highly customizable system for running Jupyter notebooks with multiple execution modes and options.
+This guide explains how to use the simplified notebook runner to execute Jupyter notebooks using Jupyter's built-in conversion tools.
 
-## 📋 Available Execution Modes
+## Overview
 
-### 1. **Interactive Modes**
+The simplified approach uses Jupyter's `nbconvert` to convert notebooks to Python files and execute them directly. This method is more reliable, faster, and doesn't require complex runner infrastructure.
 
-- **Jupyter Notebook**: Traditional notebook interface
-- **JupyterLab**: Modern notebook interface
+## Quick Start
 
-### 2. **Programmatic Modes**
-
-- **Execute**: Full notebook execution using nbconvert
-- **Extract**: Extract code and run directly as Python
-- **Specific Cells**: Run only selected cells
-- **Memory Monitoring**: Run with memory usage tracking
-
-### 3. **Conversion Modes**
-
-- **HTML Export**: Convert notebook to HTML format
-
-## 🎯 Quick Start
+### 1. Basic Usage
 
 ```bash
-# Activate environment
-cd /Users/parteekmalik/github/pytorch
+# Run a notebook (converts to Python and executes)
+python helpers/run_notebook.py crypto_prediction.ipynb
+
+# Run with custom output directory
+python helpers/run_notebook.py crypto_prediction.ipynb --output-dir results/
+
+# Keep the generated Python file
+python helpers/run_notebook.py crypto_prediction.ipynb --keep-python
+
+# Quiet mode (minimal output)
+python helpers/run_notebook.py crypto_prediction.ipynb --quiet
+```
+
+### 2. Direct Jupyter Commands
+
+You can also use Jupyter commands directly:
+
+```bash
+# Convert and execute in one step
+jupyter nbconvert --to python --execute crypto_prediction.ipynb
+
+# Convert to Python and run separately
+jupyter nbconvert --to python crypto_prediction.ipynb
+python crypto_prediction.py
+
+# Execute and save with outputs
+jupyter nbconvert --to notebook --execute crypto_prediction.ipynb --output crypto_prediction_executed.ipynb
+```
+
+## Features
+
+- **Simple & Reliable**: Uses Jupyter's built-in tools
+- **No Dependencies**: Only requires Jupyter (already installed)
+- **Fast Execution**: Direct Python execution without notebook overhead
+- **Chart Prevention**: Automatically prevents matplotlib GUI popups
+- **Clean Output**: Organized file management in `build/` directory
+- **Error Handling**: Clear error messages and proper exit codes
+
+## Command Line Options
+
+| Option          | Description                                     | Default  |
+| --------------- | ----------------------------------------------- | -------- |
+| `notebook`      | Path to notebook file                           | Required |
+| `--output-dir`  | Output directory for generated files            | `build/` |
+| `--keep-python` | Keep the generated Python file                  | `False`  |
+| `--quiet`       | Suppress verbose output                         | `False`  |
+| `--no-cleanup`  | Do not clean up build directory after execution | `False`  |
+
+## Examples
+
+### Example 1: Basic Execution
+
+```bash
+# Simple execution
+python helpers/run_notebook.py crypto_prediction.ipynb
+```
+
+Output:
+
+```
+🔄 Converting notebook: crypto_prediction.ipynb
+📝 Python file: build/crypto_prediction.py
+✅ Notebook converted successfully
+🚀 Executing Python script: build/crypto_prediction.py
+✅ Execution completed successfully
+🧹 Cleaned up temporary Python file
+🧹 Cleaned up build directory
+```
+
+### Example 2: Keep Python File
+
+```bash
+# Keep the generated Python file for inspection
+python helpers/run_notebook.py crypto_prediction.ipynb --keep-python
+```
+
+Output:
+
+```
+🔄 Converting notebook: crypto_prediction.ipynb
+📝 Python file: build/crypto_prediction.py
+✅ Notebook converted successfully
+🚀 Executing Python script: build/crypto_prediction.py
+✅ Execution completed successfully
+📁 Python file saved to: build/crypto_prediction.py
+```
+
+### Example 3: Custom Output Directory
+
+```bash
+# Save outputs to specific directory
+python helpers/run_notebook.py crypto_prediction.ipynb --output-dir results/
+```
+
+### Example 4: Quiet Mode
+
+```bash
+# Minimal output for scripting
+python helpers/run_notebook.py crypto_prediction.ipynb --quiet
+```
+
+## Direct Jupyter Usage
+
+### Convert and Execute
+
+```bash
+# One-step conversion and execution
+jupyter nbconvert --to python --execute crypto_prediction.ipynb
+```
+
+### Execute with Outputs
+
+```bash
+# Execute and save with all outputs
+jupyter nbconvert --to notebook --execute crypto_prediction.ipynb --output crypto_prediction_executed.ipynb
+```
+
+### Convert to Different Formats
+
+```bash
+# Convert to HTML
+jupyter nbconvert --to html crypto_prediction.ipynb
+
+# Convert to PDF
+jupyter nbconvert --to pdf crypto_prediction.ipynb
+
+# Convert to Markdown
+jupyter nbconvert --to markdown crypto_prediction.ipynb
+```
+
+## Environment Setup
+
+### Virtual Environment
+
+```bash
+# Activate virtual environment
 source crypto_env/bin/activate
 
-# List available notebooks
-python helpers/notebook_runner.py --list
-
-# Validate environment
-python helpers/notebook_runner.py --validate
-
-# Run in Jupyter (interactive)
-python helpers/notebook_runner.py --jupyter original
-
-# Run in JupyterLab (interactive)
-python helpers/notebook_runner.py --jupyterlab ondemand
-
-# Execute programmatically (first 10 cells)
-python helpers/notebook_runner.py --execute original --max-cells 10
-
-# Extract and run code directly
-python helpers/notebook_runner.py --extract original --max-cells 5
-
-# Run specific cells (0, 2, 5)
-python helpers/notebook_runner.py --cells original 0 2 5
-
-# Convert to HTML
-python helpers/notebook_runner.py --convert original
-
-# Run with memory monitoring
-python helpers/notebook_runner.py --memory original
+# Run notebook
+python helpers/run_notebook.py crypto_prediction.ipynb
 ```
 
-## 📊 Available Notebooks
-
-- **original**: `crypto_prediction.ipynb` - Original preprocessing approach
-- **ondemand**: `crypto_prediction_ondemand.ipynb` - On-demand processing approach
-
-## ⚙️ Advanced Options
-
-### Execution Control
-
-- `--max-cells N`: Limit execution to first N cells
-- `--timeout N`: Set execution timeout (seconds)
-- `--output-dir DIR`: Set output directory for conversions
-
-### Memory Management
-
-- `--memory`: Monitor memory usage during execution
-- Automatic garbage collection
-- Memory usage reporting
-
-### Cell Selection
-
-- `--cells 0 2 5`: Run specific cell indices
-- Skip empty cells automatically
-- Error handling per cell
-
-## 🔧 Environment Requirements
-
-The runner automatically:
-
-- ✅ Validates virtual environment
-- ✅ Checks Python executable
-- ✅ Verifies required packages
-- ✅ Sets up proper paths
-
-## 📈 Usage Examples
-
-### Development Workflow
+### Environment Variables
 
 ```bash
-# Quick test (first 5 cells)
-python helpers/notebook_runner.py --extract original --max-cells 5
+# Prevent matplotlib GUI (automatically set by the script)
+export MPLBACKEND=Agg
 
-# Full execution test
-python helpers/notebook_runner.py --execute original
-
-# Interactive development
-python helpers/notebook_runner.py --jupyterlab original
+# Set Jupyter data directory
+export JUPYTER_DATA_DIR=/path/to/jupyter/data
 ```
 
-### Production Workflow
+## Directory Structure
 
-```bash
-# Convert to HTML for sharing
-python helpers/notebook_runner.py --convert original --output-dir reports
+The runner uses a simple directory structure:
 
-# Run with memory monitoring
-python helpers/notebook_runner.py --memory original
+```
+project/
+├── build/                    # Temporary files (auto-cleaned)
+│   └── crypto_prediction.py  # Generated Python file (if --keep-python)
+├── helpers/
+│   └── run_notebook.py       # The runner script
+├── crypto_prediction.ipynb   # Your notebook
+└── utils/                    # Your modules
 ```
 
-### Debugging
-
-```bash
-# Run specific problematic cells
-python helpers/notebook_runner.py --cells original 10 11 12
-
-# Test data processing only
-python helpers/notebook_runner.py --extract original --max-cells 8
-```
-
-## 🛠️ Troubleshooting
+## Troubleshooting
 
 ### Common Issues
 
-1. **Environment not activated**: Run `source crypto_env/bin/activate`
-2. **Missing packages**: Run `pip install -r requirements.txt`
-3. **Notebook not found**: Check file paths in `notebooks` dictionary
-4. **Memory issues**: Use `--memory` flag to monitor usage
+1. **Jupyter Not Found**
 
-### Error Handling
+   ```bash
+   # Solution: Activate virtual environment
+   source crypto_env/bin/activate
+   which jupyter
+   ```
 
-- ✅ Graceful error handling per cell
-- ✅ Detailed error reporting
-- ✅ Continue execution on non-critical errors
-- ✅ Memory cleanup on errors
+2. **Permission Errors**
 
-## 📝 Output Examples
+   ```bash
+   # Solution: Make script executable
+   chmod +x helpers/run_notebook.py
+   ```
 
-### Successful Execution
+3. **Chart Popups**
 
+   ```bash
+   # Solution: Set matplotlib backend (automatically handled)
+   export MPLBACKEND=Agg
+   ```
+
+4. **Memory Issues**
+
+   ```bash
+   # Solution: Use direct Python execution
+   jupyter nbconvert --to python crypto_prediction.ipynb
+   python crypto_prediction.py
+   ```
+
+5. **Module Import Errors**
+   ```bash
+   # Solution: Ensure you're in the project root directory
+   cd /path/to/project
+   python helpers/run_notebook.py notebook.ipynb
+   ```
+
+## Best Practices
+
+1. **Always use virtual environments** for dependency isolation
+2. **Use `--keep-python`** for debugging and inspection
+3. **Use `--quiet`** for automated scripts
+4. **Check exit codes** in automation scripts
+5. **Clean up temporary files** regularly (automatic by default)
+6. **Use direct Jupyter commands** for one-off executions
+
+## Automation Examples
+
+### Bash Script
+
+```bash
+#!/bin/bash
+# run_notebooks.sh
+
+source crypto_env/bin/activate
+
+for notebook in *.ipynb; do
+    echo "Running $notebook..."
+    python helpers/run_notebook.py "$notebook" --quiet
+    if [ $? -eq 0 ]; then
+        echo "✅ $notebook completed successfully"
+    else
+        echo "❌ $notebook failed"
+    fi
+done
 ```
-🚀 Extracting and running code from: crypto_prediction.ipynb
-============================================================
-📊 Executing first 5 code cells
-🔄 Executing cell 1/5...
-✅ Cell 1 completed
-🔄 Executing cell 2/5...
-✅ Global configuration loaded successfully!
-...
-✅ All code cells executed successfully!
+
+### Python Script
+
+```python
+#!/usr/bin/env python3
+import subprocess
+import sys
+from pathlib import Path
+
+def run_notebook(notebook_path):
+    """Run a notebook using the helper script"""
+    cmd = [sys.executable, "helpers/run_notebook.py", str(notebook_path), "--quiet"]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    return result.returncode == 0
+
+# Run all notebooks
+for notebook in Path(".").glob("*.ipynb"):
+    success = run_notebook(notebook)
+    print(f"{'✅' if success else '❌'} {notebook.name}")
 ```
 
-### Memory Monitoring
+## Migration from Old System
 
-```
-🚀 Running with memory monitoring: original
-============================================================
-📊 Initial memory usage: 45.23 MB
-...
-📊 Final memory usage: 67.89 MB
-📊 Memory used: 22.66 MB
-```
+The old complex runner system has been replaced with this simple approach:
 
-## 🎯 Best Practices
+- **Old**: `python helpers/notebook_runner.py notebook.ipynb`
+- **New**: `python helpers/run_notebook.py notebook.ipynb`
 
-1. **Start Small**: Use `--max-cells 5` for initial testing
-2. **Monitor Memory**: Use `--memory` for large datasets
-3. **Interactive Development**: Use `--jupyterlab` for development
-4. **Production Testing**: Use `--execute` for full validation
-5. **Debugging**: Use `--cells` for specific cell testing
+Benefits of the new approach:
 
-## 🔄 Integration
+- ✅ Simpler and more reliable
+- ✅ Uses standard Jupyter tools
+- ✅ Faster execution
+- ✅ Better error handling
+- ✅ No complex dependencies
+- ✅ Easier to maintain
 
-The runner integrates seamlessly with:
+## Support
 
-- ✅ Virtual environments
-- ✅ Jupyter ecosystem
-- ✅ nbconvert
-- ✅ Memory monitoring
-- ✅ Error handling
-- ✅ Custom configurations
+For issues or questions:
+
+1. Check that Jupyter is installed: `jupyter --version`
+2. Ensure virtual environment is activated
+3. Check notebook file exists and is valid
+4. Review error messages for specific issues
+5. Use `--no-cleanup` to inspect generated files for debugging
