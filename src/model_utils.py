@@ -7,14 +7,17 @@ from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 from sklearn.preprocessing import MinMaxScaler
 from typing import Tuple, Dict, Union
 
-def create_lstm_model(input_shape: Tuple[int, int], lstm_units: int = 50, dropout_rate: float = 0.2, learning_rate: float = 0.001) -> Sequential:
+def create_lstm_model(input_shape: Tuple[int, int], lstm_units: int = 50, dropout_rate: float = 0.2, learning_rate: float = 0.001, prediction_length: int = 1) -> Sequential:
+    # Calculate output size: prediction_length * 5 (OHLCV values)
+    output_size = prediction_length * 5
+    
     model = Sequential([
         LSTM(lstm_units, return_sequences=True, input_shape=input_shape),
         Dropout(dropout_rate),
         LSTM(lstm_units, return_sequences=False),
         Dropout(dropout_rate),
         Dense(25, activation='relu'),
-        Dense(5)  # OHLCV output
+        Dense(output_size)  # Dynamic output based on prediction_length
     ])
     
     model.compile(

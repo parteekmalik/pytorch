@@ -22,14 +22,7 @@ from .binance_data_organizer import (
     BinanceDataOrganizer,
     DataConfig,
     GroupedScaler,
-    scale_data,
-    predict_with_grouped_scaler,
-    # Data utility functions
-    create_minimal_features,
-    create_sliding_windows,
-    download_crypto_data,
-    # Legacy compatibility
-    scale_time_series_data_grouped
+    scale_data
 )
 
 from .plotting_utils import (
@@ -50,9 +43,6 @@ __all__ = [
     'print_memory_stats',
     
     # Data utilities (now part of binance_data_organizer)
-    'create_minimal_features',
-    'create_sliding_windows',
-    'download_crypto_data',
     'scale_data',
     
     # Model utilities
@@ -64,8 +54,6 @@ __all__ = [
     'BinanceDataOrganizer',
     'DataConfig',
     'GroupedScaler',
-    'scale_time_series_data_grouped',
-    'predict_with_grouped_scaler',
     
     # Plotting utilities
     'plot_training_history',

@@ -1,151 +1,128 @@
-# Cryptocurrency Prediction Documentation
+# Cryptocurrency Prediction System
 
-## Overview
-This documentation covers the cryptocurrency prediction system built with LSTM models and Binance data. The system is designed for memory efficiency and provides comprehensive data management, feature engineering, and model training capabilities.
+A streamlined LSTM-based cryptocurrency prediction system using Binance data. Features simplified OHLCV data structure, dynamic model output, and automatic data download.
 
 ## Quick Start
 
 ```python
-from utils import BinanceDataOrganizer, DataConfig, create_lstm_model, train_model_memory_efficient
+from src import BinanceDataOrganizer, DataConfig, create_lstm_model, evaluate_model
 
 # Configure data
-config = DataConfig('BTCUSDT', '5m', '2021-01-01', '2021-01-31', 10, 1)
+config = DataConfig(
+    symbol='BTCUSDT',
+    timeframe='5m',
+    start_time='2021-01',
+    end_time='2021-01',
+    sequence_length=5,
+    prediction_length=1,
+    train_split=0.8
+)
+
+# Create organizer (auto-downloads data)
 organizer = BinanceDataOrganizer(config)
 
 # Process data
-organizer.process_all()
-data = organizer.get_scaled_data('all')
+if organizer.process_all():
+    # Get scaled data
+    data = organizer.get_scaled_data('all')
 
-# Create and train model
-model = create_lstm_model((data['X_train_scaled'].shape[1], data['X_train_scaled'].shape[2]), data['y_train_scaled'].shape[1])
-history = train_model_memory_efficient(model, data['X_train_scaled'], data['y_train_scaled'], data['X_test_scaled'], data['y_test_scaled'])
+    # Create model
+    model = create_lstm_model(
+        input_shape=(data['X_train_scaled'].shape[1], data['X_train_scaled'].shape[2]),
+        prediction_length=config.prediction_length
+    )
+
+    # Train model
+    history = model.fit(
+        data['X_train_scaled'], data['y_train_scaled'],
+        validation_data=(data['X_test_scaled'], data['y_test_scaled']),
+        epochs=50,
+        batch_size=32,
+        callbacks=[
+            tf.keras.callbacks.EarlyStopping(patience=10, restore_best_weights=True),
+            tf.keras.callbacks.ReduceLROnPlateau(patience=5, factor=0.5, min_lr=1e-7)
+        ]
+    )
+
+    # Evaluate model
+    scalers = organizer.get_scalers()
+    results = evaluate_model(model, data['X_test_scaled'], data['y_test_scaled'], scalers['y'])
 ```
 
-## Documentation Structure
+## Key Features
 
-### Core Components
-- **[Binance Data Organizer](BINANCE_DATA_ORGANIZER.md)** - Main data management class
-- **[Grouped Scaler](GROUPED_SCALER.md)** - Intelligent normalization system
-- **[Data Utilities](DATA_UTILITIES.md)** - Data download and processing functions
-- **[Model Utilities](MODEL_UTILITIES.md)** - LSTM model creation and training
+- **Simplified Data**: OHLCV-only data structure
+- **Dynamic Output**: Models adapt to prediction length
+- **Auto-Download**: Data downloaded automatically
+- **Early Stopping**: Prevents overfitting
+- **Multi-Step Prediction**: Predict multiple future candles
 
-### Key Features
-- **Memory Efficient**: Designed for 16GB M4 MacBook
-- **On-Demand Data**: Generate data for specific time ranges
-- **Grouped Normalization**: Intelligent feature scaling
-- **Comprehensive Features**: Time, price, and volume features
-- **Production Ready**: Save/load models and scalers
+## Multi-Step Prediction
+
+```python
+# Configure for 5-step prediction
+config = DataConfig(
+    symbol='BTCUSDT',
+    timeframe='5m',
+    start_time='2021-01',
+    end_time='2021-01',
+    sequence_length=10,
+    prediction_length=5  # Predict 5 future candles
+)
+
+organizer = BinanceDataOrganizer(config)
+# Model automatically adjusts output size to 25 (5 candles × 5 OHLCV values)
+```
 
 ## File Structure
 
 ```
-utils/
-├── binance_data_organizer.py  # Main data management
+src/
+├── binance_data_organizer.py  # Main data management class
 ├── model_utils.py            # LSTM model functions
-├── memory_utils.py           # Memory management
+├── utils.py                  # Data download and sequence creation
 └── __init__.py              # Package imports
+
+tests/
+├── test_binance_organizer.py # Comprehensive organizer tests
+├── test_model_utils.py       # Model function tests
+└── test_utils.py             # Utility function tests
 
 docs/
 ├── README.md                 # This file
-├── BINANCE_DATA_ORGANIZER.md # Data organizer documentation
-├── GROUPED_SCALER.md         # Normalization documentation
-├── DATA_UTILITIES.md         # Data processing documentation
 └── MODEL_UTILITIES.md        # Model training documentation
+
+scripts/
+└── run_notebook.py           # Notebook execution script
 ```
 
-## Architecture
+## Testing
 
-### Data Flow
-1. **Download**: Binance Vision API → Raw OHLCV data
-2. **Features**: Time, price, volume features
-3. **Sequences**: Sliding windows for LSTM
-4. **Normalization**: Grouped scaling by feature type
-5. **Training**: Memory-efficient LSTM training
-6. **Prediction**: Real-time candle prediction
+```bash
+# Run all tests
+python -m pytest tests/ -v
 
-### Memory Management
-- Configurable row limits
-- Lazy data loading
-- Garbage collection
-- Memory monitoring
-
-## Examples
-
-### Basic Usage
-```python
-from utils import BinanceDataOrganizer, DataConfig
-
-config = DataConfig('BTCUSDT', '5m', '2021-01-01', '2021-01-31', 10, 1)
-organizer = BinanceDataOrganizer(config)
-organizer.process_all()
+# Test notebook execution
+python scripts/run_notebook.py crypto_prediction.ipynb
 ```
 
-### Advanced Usage
-```python
-# Get data for specific time range
-data = organizer.get_data_in_range('2021-01-15', '2021-01-20', scaled=True)
+## Documentation
 
-# Make predictions
-predictions = model.predict(data['X_scaled'])
-```
-
-### Production Deployment
-```python
-# Save model and scalers
-model.save('crypto_model.h5')
-import pickle
-with open('scalers.pkl', 'wb') as f:
-    pickle.dump(organizer.get_scalers(), f)
-```
-
-## Performance
-
-### Memory Usage
-- **Conservative**: 10,000 rows (~2GB)
-- **Moderate**: 50,000 rows (~8GB)
-- **Aggressive**: 100,000+ rows (16GB+)
-
-### Training Time
-- **Small dataset**: 5-10 minutes
-- **Medium dataset**: 15-30 minutes
-- **Large dataset**: 1+ hours
+- **[Model Utilities](MODEL_UTILITIES.md)** - LSTM model creation and training
 
 ## Troubleshooting
 
 ### Common Issues
-1. **Memory errors**: Reduce `max_rows`
-2. **Download failures**: Check internet connection
-3. **Poor performance**: Tune hyperparameters
-4. **Overfitting**: Increase dropout rate
+
+1. **Import errors**: Use `from src import` instead of `from utils import`
+2. **Dimension errors**: Ensure prediction_length matches model output
+3. **Download failures**: Check internet connection and date format (yyyy-mm)
+4. **Poor performance**: Tune hyperparameters or increase sequence_length
+5. **Overfitting**: Early stopping should handle this automatically
 
 ### Debug Tools
+
 ```python
-from utils import get_memory_usage, print_memory_stats
-
-# Monitor memory
-print_memory_stats()
-
-# Check memory usage
-usage = get_memory_usage()
-print(f"Memory usage: {usage:.1f} MB")
+# Test imports
+python -c "from src import BinanceDataOrganizer, DataConfig; print('✅ Imports working')"
 ```
-
-## Contributing
-
-### Code Style
-- Minimal comments in code
-- Comprehensive documentation in .md files
-- Type hints for all functions
-- Clean, readable code structure
-
-### Testing
-```bash
-# Run all tests
-python tests/run_all_tests.py
-
-# Run specific test
-python tests/test_data_utilities.py
-```
-
-## License
-This project is for educational and research purposes.
