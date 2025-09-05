@@ -16,7 +16,6 @@ def cleanup_build_dir():
     build_dir = Path("build")
     if build_dir.exists():
         shutil.rmtree(build_dir)
-        print("🧹 Cleaned up build directory")
 
 def run_notebook(notebook_path, output_dir="build", keep_python=False, verbose=True, cleanup=True):
     """
@@ -97,6 +96,14 @@ def run_notebook(notebook_path, output_dir="build", keep_python=False, verbose=T
                 
                 content = '\n'.join(new_lines)
             
+            # Ensure test_config is imported if using src imports
+            if 'from src import' in content and 'test_config' not in content:
+                # Add test_config to the import statement
+                content = content.replace(
+                    'from src import (',
+                    'from src import (\n    test_config,'
+                )
+            
             # Add matplotlib backend setting at the top if matplotlib is imported
             if ('import matplotlib' in content or 'import matplotlib.pyplot' in content) and 'matplotlib.use(' not in content:
                 # Find the first matplotlib import and add backend setting after it
@@ -117,14 +124,23 @@ def run_notebook(notebook_path, output_dir="build", keep_python=False, verbose=T
                         new_lines.append(line)
                 
                 content = '\n'.join(new_lines)
+            
+            # Replace production config with test config for faster execution
+            if 'from src import' in content and 'production_config' in content:
+                content = content.replace('production_config', 'test_config')
+                # Also update CONFIG_MODE to match the actual configuration being used
+                content = content.replace("CONFIG_MODE = 'production'", "CONFIG_MODE = 'test'")
+            elif 'from src import' in content and 'test_config' not in content:
+                # Only replace if test_config is not already being used
+                content = content.replace('config.', 'test_config.')
+                content = content.replace('config =', 'test_config =')
+                # Also update CONFIG_MODE to match the actual configuration being used
+                content = content.replace("CONFIG_MODE = 'production'", "CONFIG_MODE = 'test'")
                 
             with open(python_file, 'w', encoding='utf-8') as f:
                 f.write(content)
-            print("📊 Set matplotlib backend to non-interactive mode")
-            if added_sys_path:
-                print("🔧 Added sys.path fix for src import")
         except Exception as e:
-            print(f"⚠️  Warning: Could not modify Python file: {e}")
+            pass  # Silently continue if file modification fails
         
         # Add parent directory to Python path for module imports
         python_path = str(notebook_path.parent)
@@ -147,11 +163,8 @@ def run_notebook(notebook_path, output_dir="build", keep_python=False, verbose=T
         # Clean up Python file if not keeping it
         if not keep_python:
             python_file.unlink()
-            if verbose:
-                print("🧹 Cleaned up temporary Python file")
         else:
-            if verbose:
-                print(f"📁 Python file saved to: {python_file}")
+            pass  # Keep the file
         
         # Clean up output directory if requested and no files to keep
         if cleanup and not keep_python:

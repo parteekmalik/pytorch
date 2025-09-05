@@ -12,7 +12,6 @@ def _download_single_month(symbol: str, interval: str, year: str, month: str) ->
         month_padded = month.zfill(2)
         url = f"https://data.binance.vision/data/spot/monthly/klines/{symbol}/{interval}/{symbol}-{interval}-{year}-{month_padded}.zip"
         
-        print(f"📥 Downloading {symbol} {interval} data for {year}-{month_padded}...")
         
         response = requests.get(url, timeout=30)
         response.raise_for_status()
@@ -20,7 +19,6 @@ def _download_single_month(symbol: str, interval: str, year: str, month: str) ->
         with zipfile.ZipFile(io.BytesIO(response.content)) as z:
             csv_files = [f for f in z.namelist() if f.endswith('.csv')]
             if not csv_files:
-                print(f"❌ No CSV file found in {symbol}-{interval}-{year}-{month_padded}.zip")
                 return None
             
             with z.open(csv_files[0]) as f:
@@ -47,10 +45,8 @@ def _download_single_month(symbol: str, interval: str, year: str, month: str) ->
         df = df.dropna()
         
         if len(df) > 0:
-            print(f"   Downloaded {len(df)} rows")
             return df
         else:
-            print(f"   No valid data for {year}-{month_padded}")
             return None
             
     except Exception as e:
@@ -59,11 +55,6 @@ def _download_single_month(symbol: str, interval: str, year: str, month: str) ->
 
 
 def download_binance_data(symbol: str, interval: str, data_from: str, data_to: str) -> Optional[pd.DataFrame]:
-    print("📥 DOWNLOADING CRYPTOCURRENCY DATA")
-    print(f"   Symbol: {symbol}")
-    print(f"   Interval: {interval}")
-    print(f"   Date range: {data_from} to {data_to}")
-    print("=" * 50)
     
     try:
         # Parse date range (format: yyyy-mm)
@@ -83,7 +74,6 @@ def download_binance_data(symbol: str, interval: str, data_from: str, data_to: s
                 current = current.replace(month=current.month + 1)
         
         year = start_date.strftime('%Y')
-        print(f"📅 Downloaded data from months: {year}-{months[0]} to {year}-{months[-1]}")
         
         # Download data from Binance Vision
         all_data = []
@@ -103,9 +93,6 @@ def download_binance_data(symbol: str, interval: str, data_from: str, data_to: s
         essential_cols = ['Open', 'High', 'Low', 'Close', 'Volume']
         combined_df = combined_df[essential_cols]
         
-        print(f"\n✅ Download completed successfully!")
-        print(f"📊 Final data shape: {combined_df.shape}")
-        print(f"📊 Essential columns: {list(combined_df.columns)}")
         
         return combined_df
         

@@ -29,7 +29,6 @@ def create_lstm_model(input_shape: Tuple[int, int], lstm_units: int = 50, dropou
     return model
 
 def evaluate_model(model: Sequential, X_test: np.ndarray, y_test: np.ndarray, scaler_y: MinMaxScaler) -> Dict[str, Union[float, np.ndarray]]:
-    print("📊 Evaluating model performance...")
     
     predictions_scaled = model.predict(X_test, verbose=0)
     predictions = scaler_y.inverse_transform(predictions_scaled)
@@ -49,10 +48,6 @@ def evaluate_model(model: Sequential, X_test: np.ndarray, y_test: np.ndarray, sc
         'y_true_original': y_test_original
     }
     
-    print(f"📈 Test Loss: {mse:.4f}")
-    print(f"📈 Test MAE: {mae:.4f}")
-    print(f"📈 Test MAPE: {mape:.2f}%")
-    print(f"📈 Test RMSE: {rmse:.4f}")
     
     return metrics
 

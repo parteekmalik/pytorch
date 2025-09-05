@@ -10,7 +10,6 @@ def get_memory_usage() -> float:
 def check_memory_limit(max_memory_mb: int = 4000) -> bool:
     current_memory = get_memory_usage()
     if current_memory > max_memory_mb:
-        print(f"⚠️  Memory usage high: {current_memory:.1f} MB (limit: {max_memory_mb} MB)")
         return False
     return True
 
@@ -33,9 +32,4 @@ def get_memory_stats() -> Dict[str, float]:
 
 def print_memory_stats() -> None:
     stats = get_memory_stats()
-    print(f"💾 Memory Stats:")
-    print(f"   Current: {stats['current_mb']:.1f} MB")
-    print(f"   Available: {stats['available_mb']:.1f} MB")
-    print(f"   Total: {stats['total_mb']:.1f} MB")
-    print(f"   Usage: {stats['usage_percent']:.1f}%")
-    print(f"   Available: {stats['available_percent']:.1f}%")
+    print(f"💾 Memory: {stats['current_mb']:.1f}MB / {stats['total_mb']:.1f}MB ({stats['usage_percent']:.1f}%)")

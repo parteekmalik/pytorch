@@ -10,6 +10,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from src.binance_data_organizer import BinanceDataOrganizer, DataConfig, GroupedScaler
 from src.utils import create_sequences
+from src.config import test_config
 
 
 class TestDataConfig:
@@ -17,27 +18,19 @@ class TestDataConfig:
     
     def test_data_config_creation(self):
         """Test DataConfig creation with valid parameters"""
-        config = DataConfig(
-            symbol='BTCUSDT',
-            timeframe='5m',
-            start_time='2021-01',
-            end_time='2021-01',
-            sequence_length=5,
-            prediction_length=1,
-            train_split=0.8
-        )
+        data_config = test_config.get_data_config()
         
-        assert config.symbol == 'BTCUSDT'
-        assert config.timeframe == '5m'
-        assert config.start_time == '2021-01'
-        assert config.end_time == '2021-01'
-        assert config.sequence_length == 5
-        assert config.prediction_length == 1
-        assert config.train_split == 0.8
+        assert data_config.symbol == 'BTCUSDT'
+        assert data_config.timeframe == '5m'
+        assert data_config.start_time == '2021-01'
+        assert data_config.end_time == '2021-02'
+        assert data_config.sequence_length == 10  # test sequence_length
+        assert data_config.prediction_length == 1  # test prediction_length
+        assert data_config.train_split == 0.7  # test train_split
     
     def test_data_config_defaults(self):
         """Test DataConfig with default train_split"""
-        config = DataConfig(
+        test_config = DataConfig(
             symbol='ETHUSDT',
             timeframe='1h',
             start_time='2021-02',
@@ -46,7 +39,7 @@ class TestDataConfig:
             prediction_length=2
         )
         
-        assert config.train_split == 0.8  # Default value
+        assert test_config.train_split == 0.8  # Default value
 
 
 class TestGroupedScaler:
@@ -214,28 +207,21 @@ class TestBinanceDataOrganizer:
     @patch('src.binance_data_organizer.download_binance_data')
     def test_organizer_initialization(self, mock_download):
         """Test BinanceDataOrganizer initialization"""
-        # Mock download function
+        # Mock download function with test data
         mock_data = pd.DataFrame({
-            'Open': [100, 101, 102],
-            'High': [101, 102, 103],
-            'Low': [99, 100, 101],
-            'Close': [100.5, 101.5, 102.5],
-            'Volume': [1000, 1100, 1200]
+            'Open': [100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110],
+            'High': [101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111],
+            'Low': [99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109],
+            'Close': [100.5, 101.5, 102.5, 103.5, 104.5, 105.5, 106.5, 107.5, 108.5, 109.5, 110.5],
+            'Volume': [1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900, 2000]
         })
         mock_download.return_value = mock_data
         
-        config = DataConfig(
-            symbol='BTCUSDT',
-            timeframe='5m',
-            start_time='2021-01',
-            end_time='2021-01',
-            sequence_length=5,
-            prediction_length=1
-        )
+        data_config = test_config.get_data_config()
         
-        organizer = BinanceDataOrganizer(config)
+        organizer = BinanceDataOrganizer(data_config)
         
-        assert organizer.config == config
+        assert organizer.config == data_config
         assert organizer.raw_data is not None
         assert organizer.scaler_X is None
         assert organizer.scaler_y is None

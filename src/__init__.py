@@ -31,7 +31,19 @@ from .plotting_utils import (
     plot_price_data,
     plot_prediction_errors,
     plot_feature_importance,
-    plot_feature_analysis
+    plot_feature_analysis,
+    plot_candlestick_chart,
+    plot_prediction_comparison,
+    plot_prediction_accuracy_distribution,
+    plot_model_performance_summary
+)
+
+from .config import (
+    BaseConfig,
+    ProductionConfig,
+    TestConfig,
+    production_config,
+    test_config
 )
 
 __all__ = [
@@ -61,5 +73,16 @@ __all__ = [
     'plot_price_data',
     'plot_prediction_errors',
     'plot_feature_importance',
-    'plot_feature_analysis'
+    'plot_feature_analysis',
+    'plot_candlestick_chart',
+    'plot_prediction_comparison',
+    'plot_prediction_accuracy_distribution',
+    'plot_model_performance_summary',
+    
+    # Configuration
+    'BaseConfig',
+    'ProductionConfig',
+    'TestConfig',
+    'production_config',
+    'test_config'
 ]

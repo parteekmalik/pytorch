@@ -9,6 +9,7 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from model_utils import create_lstm_model, evaluate_model
+from config import test_config
 
 
 class TestCreateLSTMModel:
@@ -17,16 +18,16 @@ class TestCreateLSTMModel:
     def test_create_lstm_model_basic(self):
         """Test basic LSTM model creation"""
         model = create_lstm_model(
-            input_shape=(10, 5),  # 10 timesteps, 5 features
-            lstm_units=50,
-            dropout_rate=0.2
+            input_shape=(test_config.sequence_length, 5),  # test sequence length, 5 features
+            lstm_units=test_config.lstm_units,
+            dropout_rate=test_config.dropout_rate
         )
         
         assert isinstance(model, tf.keras.Model)
         assert len(model.layers) == 6  # LSTM, Dropout, LSTM, Dropout, Dense, Dense
         
         # Check input shape
-        assert model.input_shape == (None, 10, 5)
+        assert model.input_shape == (None, test_config.sequence_length, 5)
         
         # Check output shape
         assert model.output_shape == (None, 5)  # 5 OHLCV values
