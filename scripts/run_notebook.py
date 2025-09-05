@@ -74,20 +74,57 @@ def run_notebook(notebook_path, output_dir="build", keep_python=False, verbose=T
         env = os.environ.copy()
         env['MPLBACKEND'] = 'Agg'  # Prevent matplotlib GUI
         
-        # Add matplotlib backend setting to the Python file
+        # Add necessary imports and path fixes to the Python file
         try:
             with open(python_file, 'r', encoding='utf-8') as f:
                 content = f.read()
             
-            # Add matplotlib backend setting at the top if matplotlib is imported
-            if 'import matplotlib' in content and 'matplotlib.use(' not in content:
-                content = 'import matplotlib\nmatplotlib.use("Agg")\n' + content
+            # Add sys.path fix for src import
+            if 'from src import' in content and 'sys.path.append' not in content:
+                # Find the first import statement and add sys.path fix before it
+                lines = content.split('\n')
+                new_lines = []
+                added_sys_path = False
                 
-                with open(python_file, 'w', encoding='utf-8') as f:
-                    f.write(content)
-                print("📊 Set matplotlib backend to non-interactive mode")
+                for line in lines:
+                    if 'from src import' in line and not added_sys_path:
+                        new_lines.append('import sys')
+                        new_lines.append('import os')
+                        new_lines.append('sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))')
+                        new_lines.append('')
+                        added_sys_path = True
+                    new_lines.append(line)
+                
+                content = '\n'.join(new_lines)
+            
+            # Add matplotlib backend setting at the top if matplotlib is imported
+            if ('import matplotlib' in content or 'import matplotlib.pyplot' in content) and 'matplotlib.use(' not in content:
+                # Find the first matplotlib import and add backend setting after it
+                lines = content.split('\n')
+                new_lines = []
+                added_matplotlib_backend = False
+                
+                for line in lines:
+                    if ('import matplotlib' in line or 'import matplotlib.pyplot' in line) and not added_matplotlib_backend:
+                        # Add matplotlib import first if only pyplot is imported
+                        if 'import matplotlib.pyplot' in line and 'import matplotlib' not in ''.join(new_lines):
+                            new_lines.append('import matplotlib')
+                        new_lines.append(line)
+                        # Add the backend setting after the import
+                        new_lines.append('matplotlib.use("Agg")  # Prevent GUI popups')
+                        added_matplotlib_backend = True
+                    else:
+                        new_lines.append(line)
+                
+                content = '\n'.join(new_lines)
+                
+            with open(python_file, 'w', encoding='utf-8') as f:
+                f.write(content)
+            print("📊 Set matplotlib backend to non-interactive mode")
+            if added_sys_path:
+                print("🔧 Added sys.path fix for src import")
         except Exception as e:
-            print(f"⚠️  Warning: Could not set matplotlib backend: {e}")
+            print(f"⚠️  Warning: Could not modify Python file: {e}")
         
         # Add parent directory to Python path for module imports
         python_path = str(notebook_path.parent)
@@ -143,7 +180,7 @@ def main():
     parser.add_argument('notebook', help='Path to the notebook file')
     parser.add_argument('-o', '--output-dir', help='Output directory for generated files (default: build/)')
     parser.add_argument('-k', '--keep-python', action='store_true', 
-                       help='Keep the generated Python file')
+                       help='Keep the generated Python file (default: False - files are cleaned up)')
     parser.add_argument('-q', '--quiet', action='store_true', 
                        help='Suppress verbose output')
     parser.add_argument('--no-cleanup', action='store_true',
