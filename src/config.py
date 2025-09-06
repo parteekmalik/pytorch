@@ -34,6 +34,8 @@ class BaseConfig:
     lr_factor: float = 0.5
     min_lr: float = 1e-7
 
+    scaling_padding_factor: float = 0.5  # Padding factor for expanded range calculation
+
 
 @dataclass
 class ProductionConfig(BaseConfig):
@@ -61,7 +63,7 @@ class TestConfig(BaseConfig):
     """Test configuration optimized for fast execution during testing."""
     
     # Test-optimized parameters for speed
-    epochs: int = 3
+    epochs: int = 5
     batch_size: int = 1024
     lstm_units: int = 20
     sequence_length: int = 50

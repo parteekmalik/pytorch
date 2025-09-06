@@ -15,7 +15,9 @@ from .memory_utils import (
 from .model_utils import (
     create_lstm_model,
     evaluate_model,
-    predict_next_candle
+    predict_next_candle,
+    add_open_to_predictions,
+    calculate_prediction_metrics
 )
 
 from .binance_data_organizer import (
@@ -23,17 +25,15 @@ from .binance_data_organizer import (
 )
 
 from .plotting_utils import (
+    draw_candlestick_chart,
+    plot_combined_input_output_charts,
+    plot_sample_data_comparison,
     plot_training_history,
     plot_predictions_vs_actual,
-    plot_price_data,
-    plot_prediction_errors,
+    plot_prediction_accuracy,
+    create_interactive_candlestick_chart,
     plot_feature_importance,
-    plot_feature_analysis,
-    plot_candlestick_chart,
-    plot_prediction_accuracy_distribution,
-    plot_model_performance_summary,
-    plot_test_performance_metrics,
-    plot_prediction_candlestick
+    plot_residuals
 )
 
 from .config import (
@@ -56,22 +56,22 @@ __all__ = [
     'create_lstm_model',
     'evaluate_model',
     'predict_next_candle',
+    'add_open_to_predictions',
+    'calculate_prediction_metrics',
     
     # Binance Data Organizer (includes normalization utilities)
     'BinanceDataOrganizer',
     
     # Plotting utilities
+    'draw_candlestick_chart',
+    'plot_combined_input_output_charts',
+    'plot_sample_data_comparison',
     'plot_training_history',
     'plot_predictions_vs_actual',
-    'plot_price_data',
-    'plot_prediction_errors',
+    'plot_prediction_accuracy',
+    'create_interactive_candlestick_chart',
     'plot_feature_importance',
-    'plot_feature_analysis',
-    'plot_candlestick_chart',
-    'plot_prediction_accuracy_distribution',
-    'plot_model_performance_summary',
-    'plot_test_performance_metrics',
-    'plot_prediction_candlestick',
+    'plot_residuals',
     
     # Configuration
     'BaseConfig',
