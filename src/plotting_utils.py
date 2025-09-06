@@ -12,12 +12,12 @@ from plotly.subplots import make_subplots
 import plotly.express as px
 
 
-def draw_candlestick_chart(data, title, ylabel, ylim=None, show_full_range=True):
+def draw_candlestick_chart(data, title, ylabel, ylim=None, show_full_range=False):
     """
-    Draw candlestick chart with improved y-axis scaling.
+    Draw candlestick chart with automatic y-axis scaling.
     
     FEATURES:
-    - Option to show full configured range (0.25-0.75) or dynamic range
+    - Automatically detects Y-axis range using data min/max values
     - 5% padding for better visualization
     - Green/red candlesticks based on open vs close
     - Proper high-low wicks and open-close bodies
@@ -27,7 +27,7 @@ def draw_candlestick_chart(data, title, ylabel, ylim=None, show_full_range=True)
     - title: Chart title
     - ylabel: Y-axis label
     - ylim: Optional fixed y-axis limits
-    - show_full_range: If True, always show full 0.25-0.75 range
+    - show_full_range: If True, show full 0.25-0.75 range (for scaled data)
     """
     fig, ax = plt.subplots(figsize=(15, 6))
     
@@ -106,14 +106,16 @@ def plot_combined_input_output_charts(unscaled_data, scaled_data, config, title_
         unscaled_data, 
         f'{title_prefix} - Unscaled OHLC Values', 
         'Price (USDT)'
+        # Uses automatic Y-axis detection by default
     )
     
     # Chart 2: Scaled Data
     print("\n2️⃣ Scaled Data Candlestick Chart (Input + Output):")
     draw_candlestick_chart(
         scaled_data, 
-        f'{title_prefix} - Scaled OHLC Values (Expanded Range Scaling)', 
+        f'{title_prefix} - Scaled OHLC Values (Padded Scaling)', 
         'Scaled Value'
+        # Uses automatic Y-axis detection by default
     )
     
     # Summary Statistics

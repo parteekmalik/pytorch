@@ -10,81 +10,141 @@ from .utils import download_binance_data, create_sequences
 warnings.filterwarnings("ignore", category=UserWarning, module="sklearn")
 warnings.filterwarnings("ignore", category=FutureWarning)
 
-class GroupedScaler:
+class OHLCPaddedScaler:
     """
-    Scaler that groups OHLC features together for unified scaling.
+    Scaler that groups OHLC features together with padding for unified scaling.
     
     LOGIC:
     - OHLC features (Open, High, Low, Close) are treated as a single group
     - All OHLC values are combined into one flat array and scaled together
+    - Input data is scaled to range [padding, 1-padding] to leave room for output
+    - Target data is scaled using same min/max as input but clamped to [0, 1] range
     - This preserves relative relationships between Open, High, Low, Close within each sequence
-    - Each sequence is scaled independently (called from _scale_sequences)
+    - Each sequence is scaled independently
     
     WHY THIS APPROACH:
     - Prevents High-Low relationship distortion that occurs when scaling OHLC separately
     - Maintains candlestick chart integrity after scaling
     - Each sequence gets its own min/max range for optimal scaling
-    
+    - Padding prevents output from exceeding valid range while allowing flexibility
+
     INPUT FORMAT:
-    - Expects 2D array with shape (timesteps, 4) where columns are [Open, High, Low, Close]
-    - Each call to transform() processes one sequence independently
+    - input_sequences: 3D array (num_sequences, sequence_length, 4) - OHLC historical data
+    - target_sequences: 3D array (num_sequences, prediction_length, 3) - HLC future data
     
     OUTPUT FORMAT:
-    - Returns 2D array with same shape as input
-    - All values scaled to 0-1 range
-    - OHLC values scaled together as a unified group
+    - Returns same shapes as input
+    - Input values scaled to [padding, 1-padding] range
+    - Target values scaled using input min/max but clamped to [0, 1] range
     """
     
-    def _is_fit(self, input: np.ndarray) -> None:
-        """Validate input format before processing."""
-        if input.ndim != 2:
-            raise ValueError(f"Expected 2D array, got {input.ndim}D array")
-        
-        if input.shape[1] != 4:
-            raise ValueError(f"Expected 4 features (OHLC), got {input.shape[1]} features")
-        
-        if input.size == 0:
-            raise ValueError("Cannot fit on empty array")
-        
-        if np.any(np.isnan(input)) or np.any(np.isinf(input)):
-            raise ValueError("Array contains NaN or infinite values")
-    
-    def transform(self, input: np.ndarray) -> np.ndarray:
+    def __init__(self, padding_factor: float = 0.5):
         """
-        Scale a single sequence using grouped OHLC scaling.
+        Initialize scaler with padding factor.
+        
+        Args:
+            padding_factor: Factor to reduce scaling range (e.g., 0.5 means scale to [0.25, 0.75])
+        """
+        self.padding_factor = padding_factor
+        self.padding_per_side = padding_factor / 2.0
+    
+    def _validate_input(self, input_sequences: np.ndarray, target_sequences: np.ndarray) -> None:
+        """Validate input format before processing."""
+        if input_sequences.ndim != 3:
+            raise ValueError(f"Expected 3D input array, got {input_sequences.ndim}D array")
+        
+        if target_sequences.ndim != 2:
+            raise ValueError(f"Expected 2D target array (flattened), got {target_sequences.ndim}D array")
+        
+        if input_sequences.shape[0] != target_sequences.shape[0]:
+            raise ValueError(f"Number of sequences mismatch: input={input_sequences.shape[0]}, target={target_sequences.shape[0]}")
+        
+        if input_sequences.shape[2] != 4:
+            raise ValueError(f"Expected 4 features (OHLC) in input, got {input_sequences.shape[2]} features")
+        
+        # Check if target can be reshaped to (num_sequences, prediction_length, 3)
+        if target_sequences.shape[1] % 3 != 0:
+            raise ValueError(f"Target array second dimension must be divisible by 3 (HLC), got {target_sequences.shape[1]}")
+        
+        if input_sequences.size == 0 or target_sequences.size == 0:
+            raise ValueError("Cannot scale empty arrays")
+        
+        if np.any(np.isnan(input_sequences)) or np.any(np.isinf(input_sequences)):
+            raise ValueError("Input array contains NaN or infinite values")
+        
+        if np.any(np.isnan(target_sequences)) or np.any(np.isinf(target_sequences)):
+            raise ValueError("Target array contains NaN or infinite values")
+    
+    def scale_sequences_with_padding(self, input_sequences: np.ndarray, target_sequences: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Scale both input and target sequences with padding.
         
         PROCESS:
-        1. Combine all OHLC values into one flat array for unified scaling
-        2. Scale OHLC combined array using single MinMaxScaler
-        3. Reshape OHLC back to original (timesteps, 4) shape
+        1. For each sequence pair: find min/max from input OHLC data
+        2. Scale input to range [padding, 1-padding] (e.g., [0.25, 0.75] if padding=0.5)
+        3. Scale target using same min/max values but clamp to [0, 1] range
+        4. This ensures target can't exceed valid range while maintaining relationships
         
-        This ensures all OHLC values in the sequence use the same min/max range,
-        preserving their relative relationships.
+        Args:
+            input_sequences: 3D array (num_sequences, sequence_length, 4) - OHLC historical data
+            target_sequences: 2D array (num_sequences, prediction_length * 3) - flattened HLC future data
+            
+        Returns:
+            Tuple of (scaled_input_sequences, scaled_target_sequences) with same shapes as input
         """
-        self._is_fit(input)
+        self._validate_input(input_sequences, target_sequences)
         
-        input_scaled = input.copy()
+        scaled_input_sequences = []
+        scaled_target_sequences = []
         
-        # Step 1: Combine all OHLC values into one flat array for unified scaling
-        ohlc_combined = input.flatten().reshape(-1, 1)
+        # Calculate prediction_length from target shape
+        prediction_length = target_sequences.shape[1] // 3
         
-        # Step 2: Scale OHLC with single scaler
-        ohlc_scaler = MinMaxScaler()
-        ohlc_scaled = ohlc_scaler.fit_transform(ohlc_combined)
+        for i in range(len(input_sequences)):
+            input_sequence = input_sequences[i]  # Shape: (sequence_length, 4)
+            target_sequence = target_sequences[i]  # Shape: (prediction_length * 3,)
+            
+            # Reshape target to (prediction_length, 3) for processing
+            target_reshaped = target_sequence.reshape(prediction_length, 3)
+            
+            # Step 1: Find min/max from input OHLC data
+            ohlc_data = input_sequence  # All 4 columns are OHLC
+            ohlc_min = ohlc_data.min()
+            ohlc_max = ohlc_data.max()
+            
+            # Step 2: Scale input to [padding, 1-padding] range
+            if ohlc_max == ohlc_min:
+                # Handle case where all values are the same
+                scaled_input = np.full_like(input_sequence, self.padding_per_side)
+            else:
+                # Normal scaling to [padding_per_side, 1-padding_per_side] range
+                scaled_input = (input_sequence - ohlc_min) / (ohlc_max - ohlc_min)
+                scaled_input = scaled_input * (1 - self.padding_factor) + self.padding_per_side
+            
+            # Step 3: Scale target using same min/max and same range as input
+            if ohlc_max == ohlc_min:
+                # Handle case where all values are the same
+                scaled_target = np.full_like(target_reshaped, self.padding_per_side)
+            else:
+                # Scale target using input's min/max values to same range as input
+                scaled_target = (target_reshaped - ohlc_min) / (ohlc_max - ohlc_min)
+                scaled_target = scaled_target * (1 - self.padding_factor) + self.padding_per_side
+                # Clamp to [0, 1] range to prevent exceeding valid range
+                scaled_target = np.clip(scaled_target, 0.0, 1.0)
+            
+            # Flatten target back to original format
+            scaled_target_flat = scaled_target.flatten()
+            
+            scaled_input_sequences.append(scaled_input)
+            scaled_target_sequences.append(scaled_target_flat)
         
-        # Step 3: Reshape OHLC back to original (timesteps, 4) shape
-        ohlc_scaled_reshaped = ohlc_scaled.reshape(input.shape[0], 4)
-        
-        # Step 4: Return scaled OHLC data
-        input_scaled = ohlc_scaled_reshaped
-        
-        return input_scaled
+        return np.array(scaled_input_sequences), np.array(scaled_target_sequences)
 
 
 class BinanceDataOrganizer:
     def __init__(self, config: BaseConfig):
         self.config = config
-        self.custom_scaler = GroupedScaler()
+        self.custom_scaler = OHLCPaddedScaler(padding_factor=config.scaling_padding_factor)
         self.raw_data = download_binance_data(
             symbol=self.config.symbol,
             interval=self.config.timeframe,
@@ -122,13 +182,15 @@ class BinanceDataOrganizer:
     def get_scaled_data(self) -> Dict[str, np.ndarray]:
         unscaled_data = self.get_unscaled_split_data()
 
-        # Scale input data and get scaling parameters
-        input_train_scaled, input_scaling_params = self._scale_sequences_with_params(unscaled_data['input_train'])
-        input_test_scaled, _ = self._scale_sequences_with_params(unscaled_data['input_test'])
-        
-        # Scale output data using input scaling parameters
-        output_train_scaled = self._scale_output_with_input_params(unscaled_data['output_train'], input_scaling_params)
-        output_test_scaled = self._scale_output_with_input_params(unscaled_data['output_test'], input_scaling_params)
+        # Scale both input and target data using the new unified scaler
+        input_train_scaled, output_train_scaled = self.custom_scaler.scale_sequences_with_padding(
+            unscaled_data['input_train'], 
+            unscaled_data['output_train']
+        )
+        input_test_scaled, output_test_scaled = self.custom_scaler.scale_sequences_with_padding(
+            unscaled_data['input_test'], 
+            unscaled_data['output_test']
+        )
         
         return {
             'input_train_scaled': input_train_scaled,
@@ -137,114 +199,6 @@ class BinanceDataOrganizer:
             'output_test_scaled': output_test_scaled
         }
     
-    def _scale_sequences(self, sequences: np.ndarray) -> np.ndarray:
-        """
-        Scale each sequence independently using GroupedScaler.
-        
-        WHY INDEPENDENT SCALING:
-        - Each sequence gets its own min/max range for optimal scaling
-        - Prevents one sequence with extreme values from affecting others
-        - Maintains relative relationships within each sequence
-        - Essential for time series prediction where each sequence is independent
-        
-        PROCESS:
-        1. Iterate through each sequence in the batch
-        2. Create new GroupedScaler for each sequence
-        3. Scale each sequence independently
-        4. Combine all scaled sequences back into 3D array
-        
-        INPUT: 3D array (num_sequences, sequence_length, features)
-        OUTPUT: 3D array (num_sequences, sequence_length, features) - same shape, scaled values
-        """
-        scaled_sequences = []
-        
-        for i in range(len(sequences)):
-            # Get individual sequence (shape: [sequence_length, features])
-            sequence = sequences[i]
-            
-            # Scale this sequence independently using GroupedScaler
-            scaler = GroupedScaler()
-            scaled_sequence = scaler.transform(sequence)
-            scaled_sequences.append(scaled_sequence)
-        
-        return np.array(scaled_sequences)
-    
-    def _scale_sequences_with_params(self, sequences: np.ndarray) -> Tuple[np.ndarray, List[Dict]]:
-        """
-        Scale input sequences and return scaling parameters for output scaling.
-        
-        LOGIC:
-        - Scale each input sequence independently
-        - Store the min/max values used for each sequence
-        - Return both scaled sequences and scaling parameters
-        
-        OUTPUT:
-        - scaled_sequences: 3D array of scaled input data
-        - scaling_params: List of dicts with min/max values for each sequence
-        """
-        scaled_sequences = []
-        scaling_params = []
-        
-        for i in range(len(sequences)):
-            sequence = sequences[i]
-            
-            # Get min/max values from input sequence (OHLC only)
-            ohlc_data = sequence[:, [0, 1, 2, 3]]
-            
-            # Calculate min/max for OHLC (combined)
-            ohlc_min = ohlc_data.min()
-            ohlc_max = ohlc_data.max()
-            
-            # Store scaling parameters
-            params = {
-                'ohlc_min': ohlc_min,
-                'ohlc_max': ohlc_max
-            }
-            scaling_params.append(params)
-            
-            # Scale the sequence
-            scaler = GroupedScaler()
-            scaled_sequence = scaler.transform(sequence)
-            scaled_sequences.append(scaled_sequence)
-        
-        return np.array(scaled_sequences), scaling_params
-    
-    def _scale_output_with_input_params(self, output_data: np.ndarray, input_scaling_params: List[Dict]) -> np.ndarray:
-        """
-        Scale output data using input scaling parameters.
-        
-        LOGIC:
-        - Use the same min/max values from input data to scale output
-        - Output can go beyond 0-1 range if output values exceed input range
-        - This maintains the relationship between input and output scaling
-        
-        PROCESS:
-        1. For each output sequence, get corresponding input scaling params
-        2. Apply same OHLC min/max to output OHLC values
-        3. This allows output to potentially exceed 0-1 range
-        """
-        scaled_output = output_data.copy()
-        
-        for i in range(len(output_data)):
-            output_sequence = output_data[i]
-            params = input_scaling_params[i]
-            
-            # Reshape output sequence to (prediction_length, 3) for HLC
-            # Output is flattened: [H, L, C, H, L, C, ...] for prediction_length timesteps
-            prediction_length = len(output_sequence) // 3
-            output_reshaped = output_sequence.reshape(prediction_length, 3)
-            
-            # Get HLC from reshaped output
-            ohlc_output = output_reshaped  # H, L, C (no Open in output)
-            
-            # Scale using input min/max values
-            ohlc_scaled = (ohlc_output - params['ohlc_min']) / (params['ohlc_max'] - params['ohlc_min'])
-            
-            # Flatten scaled OHLC back to original format
-            scaled_sequence = ohlc_scaled.flatten()
-            scaled_output[i] = scaled_sequence
-        
-        return scaled_output
     
     def add_open_to_output(self, input_sequence: np.ndarray, output_sequence: np.ndarray, prediction_length: int) -> np.ndarray:
         """
