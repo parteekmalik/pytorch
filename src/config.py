@@ -2,9 +2,6 @@
 Configuration classes for production and testing environments.
 """
 from dataclasses import dataclass
-from typing import List, Optional
-from datetime import datetime
-
 
 @dataclass
 class BaseConfig:
@@ -36,19 +33,6 @@ class BaseConfig:
     lr_patience: int = 5
     lr_factor: float = 0.5
     min_lr: float = 1e-7
-    
-    def get_data_config(self) -> 'DataConfig':
-        """Get DataConfig from this configuration."""
-        from .binance_data_organizer import DataConfig
-        return DataConfig(
-            symbol=self.symbol,
-            timeframe=self.timeframe,
-            start_time=self.start_date,
-            end_time=self.end_date,
-            sequence_length=self.sequence_length,
-            prediction_length=self.prediction_length,
-            train_split=self.train_split
-        )
 
 
 @dataclass
@@ -57,11 +41,11 @@ class ProductionConfig(BaseConfig):
     
     # Production-specific overrides
     epochs: int = 50
-    batch_size: int = 64
+    batch_size: int = 1024 * 2
     lstm_units: int = 128
 
-    sequence_length: int = 60
-    prediction_length: int = 20
+    sequence_length: int = 100
+    prediction_length: int = 30
     
     # Extended data range for production
     start_date: str = "2021-01"
@@ -78,7 +62,7 @@ class TestConfig(BaseConfig):
     
     # Test-optimized parameters for speed
     epochs: int = 3
-    batch_size: int = 16
+    batch_size: int = 1024
     lstm_units: int = 20
     sequence_length: int = 50
     prediction_length: int = 20

@@ -5,6 +5,9 @@ Plotting utilities for cryptocurrency prediction visualization
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+import plotly.express as px
 
 
 def plot_training_history(history):
@@ -200,14 +203,10 @@ def plot_feature_analysis(feature_info):
 
 
 def plot_candlestick_chart(ohlcv_data, title="Candlestick Chart", max_candles=100):
-    """Plot candlestick chart for OHLCV data"""
-    import matplotlib.patches as patches
-    
+    """Plot candlestick chart for OHLCV data using Plotly"""
     # Limit data for better visualization
     n_candles = min(max_candles, len(ohlcv_data))
     data = ohlcv_data.iloc[-n_candles:] if hasattr(ohlcv_data, 'iloc') else ohlcv_data[-n_candles:]
-    
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(15, 10), gridspec_kw={'height_ratios': [3, 1]})
     
     # Extract OHLC data
     if hasattr(data, 'values'):
@@ -217,76 +216,51 @@ def plot_candlestick_chart(ohlcv_data, title="Candlestick Chart", max_candles=10
         ohlc = data[:, :4]  # First 4 columns are OHLC
         volume = data[:, 4] if data.shape[1] > 4 else np.zeros(len(data))
     
-    # Plot candlesticks
-    for i, (open_price, high, low, close) in enumerate(ohlc):
-        color = 'green' if close >= open_price else 'red'
-        
-        # Draw the high-low line
-        ax1.plot([i, i], [low, high], color='black', linewidth=0.8)
-        
-        # Draw the open-close rectangle
-        height = abs(close - open_price)
-        bottom = min(open_price, close)
-        rect = patches.Rectangle((i-0.4, bottom), 0.8, height, 
-                               facecolor=color, edgecolor='black', linewidth=0.5, alpha=0.7)
-        ax1.add_patch(rect)
+    # Create subplots
+    fig = make_subplots(
+        rows=2, cols=1,
+        shared_xaxes=True,
+        vertical_spacing=0.1,
+        subplot_titles=(f'{title} - OHLC Candlesticks', 'Volume'),
+        row_heights=[0.7, 0.3]
+    )
     
-    ax1.set_title(f'{title} - OHLC Candlesticks')
-    ax1.set_ylabel('Price (USDT)')
-    ax1.grid(True, alpha=0.3)
+    # Add candlestick chart
+    fig.add_trace(go.Candlestick(
+        x=list(range(len(ohlc))),
+        open=ohlc[:, 0],
+        high=ohlc[:, 1],
+        low=ohlc[:, 2],
+        close=ohlc[:, 3],
+        name="Price",
+        increasing_line_color='#26a69a',
+        decreasing_line_color='#ef5350'
+    ), row=1, col=1)
     
-    # Plot volume
-    ax2.bar(range(len(volume)), volume, color='orange', alpha=0.7)
-    ax2.set_title('Volume')
-    ax2.set_xlabel('Time')
-    ax2.set_ylabel('Volume')
-    ax2.grid(True, alpha=0.3)
+    # Add volume chart
+    fig.add_trace(go.Bar(
+        x=list(range(len(volume))),
+        y=volume,
+        name="Volume",
+        marker_color='orange',
+        opacity=0.7
+    ), row=2, col=1)
     
-    plt.tight_layout()
-    plt.show()
-
-
-def plot_prediction_comparison(y_pred, y_true, best_idx, worst_idx, title="Best vs Worst Predictions"):
-    """Plot comparison between best and worst predictions"""
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
+    # Update layout
+    fig.update_layout(
+        title=f'{title} - OHLCV Chart',
+        xaxis_title="Time Steps",
+        yaxis_title="Price (USDT)",
+        height=600,
+        showlegend=True,
+        template="plotly_dark"
+    )
     
-    # Handle multi-step predictions - take only the first timestep
-    pred_best = y_pred[best_idx]
-    true_best = y_true[best_idx]
-    pred_worst = y_pred[worst_idx]
-    true_worst = y_true[worst_idx]
+    # Update x-axis for volume
+    fig.update_xaxes(title_text="Time Steps", row=2, col=1)
+    fig.update_yaxes(title_text="Volume", row=2, col=1)
     
-    # If predictions are multi-step, reshape and take first timestep
-    if pred_best.shape[0] > 5:  # Multi-step prediction
-        n_steps = pred_best.shape[0] // 5
-        pred_best = pred_best[:5]  # First timestep
-        true_best = true_best[:5]  # First timestep
-        pred_worst = pred_worst[:5]  # First timestep
-        true_worst = true_worst[:5]  # First timestep
-    
-    # Best prediction
-    ax1.bar(['Open', 'High', 'Low', 'Close', 'Volume'], pred_best, 
-            alpha=0.7, color='green', label='Predicted')
-    ax1.bar(['Open', 'High', 'Low', 'Close', 'Volume'], true_best, 
-            alpha=0.5, color='blue', label='Actual')
-    ax1.set_title(f'Best Prediction (Index {best_idx}) - First Timestep')
-    ax1.set_ylabel('Value')
-    ax1.legend()
-    ax1.grid(True, alpha=0.3)
-    
-    # Worst prediction
-    ax2.bar(['Open', 'High', 'Low', 'Close', 'Volume'], pred_worst, 
-            alpha=0.7, color='red', label='Predicted')
-    ax2.bar(['Open', 'High', 'Low', 'Close', 'Volume'], true_worst, 
-            alpha=0.5, color='blue', label='Actual')
-    ax2.set_title(f'Worst Prediction (Index {worst_idx}) - First Timestep')
-    ax2.set_ylabel('Value')
-    ax2.legend()
-    ax2.grid(True, alpha=0.3)
-    
-    plt.suptitle(title, fontsize=16)
-    plt.tight_layout()
-    plt.show()
+    fig.show()
 
 
 def plot_prediction_accuracy_distribution(prediction_errors, title="Prediction Accuracy Distribution"):
@@ -319,9 +293,198 @@ def plot_prediction_accuracy_distribution(prediction_errors, title="Prediction A
     plt.show()
 
 
-def plot_model_performance_summary(history, evaluation_results, title="Model Performance Summary"):
-    """Plot comprehensive model performance summary"""
-    fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(15, 10))
+def plot_prediction_candlestick(pred_data, actual_data, input_data, title, rmse_error):
+    """Create interactive candlestick chart for input, prediction vs actual data using Plotly"""
+    
+    # Reshape data for candlestick plotting
+    # Input data: 5 features (OHLCV)
+    input_ohlc = input_data.reshape(-1, 5)[:, :4]  # OHLC only
+    input_volume = input_data.reshape(-1, 5)[:, 4]  # Volume
+    
+    # Predicted/Actual data: 4 features (HLCV) - Open is derived from previous Close
+    pred_hlcv = pred_data.reshape(-1, 4)  # HLCV
+    actual_hlcv = actual_data.reshape(-1, 4)  # HLCV
+    
+    # Reconstruct Open prices for predicted and actual data
+    # Open = previous Close (from input data's last Close, then subsequent Closes)
+    pred_ohlc = np.zeros((len(pred_hlcv), 4))
+    actual_ohlc = np.zeros((len(actual_hlcv), 4))
+    
+    # First Open = last Close from input data
+    last_input_close = input_ohlc[-1, 3]  # Last Close from input
+    pred_ohlc[0, 0] = last_input_close  # First predicted Open
+    actual_ohlc[0, 0] = last_input_close  # First actual Open
+    
+    # Subsequent Opens = previous Close
+    for i in range(1, len(pred_hlcv)):
+        pred_ohlc[i, 0] = pred_hlcv[i-1, 2]  # Open = previous Close
+        actual_ohlc[i, 0] = actual_hlcv[i-1, 2]  # Open = previous Close
+    
+    # Fill in HLCV data
+    pred_ohlc[:, 1:] = pred_hlcv[:, :3]  # High, Low, Close (first 3 columns)
+    actual_ohlc[:, 1:] = actual_hlcv[:, :3]  # High, Low, Close (first 3 columns)
+    
+    pred_volume = pred_hlcv[:, 3]  # Volume
+    actual_volume = actual_hlcv[:, 3]  # Volume
+    
+    # Calculate positions for plotting
+    input_len = len(input_ohlc)
+    pred_len = len(pred_ohlc)
+    total_len = input_len + pred_len
+    
+    # Create time indices
+    input_times = list(range(input_len))
+    pred_times = list(range(input_len, total_len))
+    
+    # Create subplots
+    fig = make_subplots(
+        rows=2, cols=1,
+        shared_xaxes=True,
+        vertical_spacing=0.1,
+        subplot_titles=(
+            f'{title} - OHLC Candlesticks (RMSE: {rmse_error:.2f}) - Scaled Data',
+            'Volume Comparison - Scaled Data'
+        ),
+        row_heights=[0.7, 0.3]
+    )
+    
+    # Add input candlesticks
+    fig.add_trace(go.Candlestick(
+        x=input_times,
+        open=input_ohlc[:, 0],
+        high=input_ohlc[:, 1],
+        low=input_ohlc[:, 2],
+        close=input_ohlc[:, 3],
+        name="Input Data",
+        increasing_line_color='#4A90E2',
+        decreasing_line_color='#2E5BBA',
+        increasing_fillcolor='#4A90E2',
+        decreasing_fillcolor='#2E5BBA'
+    ), row=1, col=1)
+    
+    # Add predicted candlesticks
+    fig.add_trace(go.Candlestick(
+        x=pred_times,
+        open=pred_ohlc[:, 0],
+        high=pred_ohlc[:, 1],
+        low=pred_ohlc[:, 2],
+        close=pred_ohlc[:, 3],
+        name="Predicted",
+        increasing_line_color='#50C878',
+        decreasing_line_color='#3A9B5A',
+        increasing_fillcolor='#50C878',
+        decreasing_fillcolor='#3A9B5A'
+    ), row=1, col=1)
+    
+    # Add actual candlesticks
+    fig.add_trace(go.Candlestick(
+        x=pred_times,
+        open=actual_ohlc[:, 0],
+        high=actual_ohlc[:, 1],
+        low=actual_ohlc[:, 2],
+        close=actual_ohlc[:, 3],
+        name="Actual",
+        increasing_line_color='#FF6B6B',
+        decreasing_line_color='#CC5555',
+        increasing_fillcolor='#FF6B6B',
+        decreasing_fillcolor='#CC5555'
+    ), row=1, col=1)
+    
+    # Add vertical line to separate input from prediction
+    fig.add_vline(
+        x=input_len - 0.5, 
+        line_dash="dash", 
+        line_color="red", 
+        line_width=2,
+        annotation_text="Prediction Start",
+        annotation_position="top"
+    )
+    
+    # Add volume bars
+    fig.add_trace(go.Bar(
+        x=input_times,
+        y=input_volume,
+        name="Input Volume",
+        marker_color='#4A90E2',
+        opacity=0.7
+    ), row=2, col=1)
+    
+    fig.add_trace(go.Bar(
+        x=pred_times,
+        y=pred_volume,
+        name="Predicted Volume",
+        marker_color='#50C878',
+        opacity=0.7
+    ), row=2, col=1)
+    
+    fig.add_trace(go.Bar(
+        x=pred_times,
+        y=actual_volume,
+        name="Actual Volume",
+        marker_color='#FF6B6B',
+        opacity=0.7
+    ), row=2, col=1)
+    
+    # Update layout
+    fig.update_layout(
+        title=f'{title} - Interactive Candlestick Chart',
+        xaxis_title="Time Steps (Input → Prediction)",
+        yaxis_title="Scaled Price (0-1)",
+        height=700,
+        showlegend=True,
+        template="plotly_dark",
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
+        )
+    )
+    
+    # Update x-axis for volume
+    fig.update_xaxes(title_text="Time Steps (Input → Prediction)", row=2, col=1)
+    fig.update_yaxes(title_text="Scaled Volume (0-1)", row=2, col=1)
+    
+    # Update y-axis for price
+    fig.update_yaxes(title_text="Scaled Price (0-1)", row=1, col=1)
+    
+    fig.show()
+
+
+def plot_test_performance_metrics(evaluation_results, title="Test Performance Metrics"):
+    """Plot test performance metrics and trade-off analysis"""
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 5))
+    
+    # Performance metrics bar chart
+    metrics = ['MAE', 'MAPE', 'RMSE']
+    values = [evaluation_results['test_mae'], evaluation_results['test_mape'], evaluation_results['rmse']]
+    bars = ax1.bar(metrics, values, color=['skyblue', 'lightcoral', 'lightgreen'])
+    ax1.set_title('Test Performance Metrics')
+    ax1.set_ylabel('Value')
+    ax1.grid(True, alpha=0.3)
+    
+    # Add value labels on bars
+    for bar, value in zip(bars, values):
+        ax1.text(bar.get_x() + bar.get_width()/2, bar.get_height() + max(values)*0.01, 
+                f'{value:.2f}', ha='center', va='bottom')
+    
+    # Model complexity vs performance scatter
+    ax2.scatter([evaluation_results['test_mae']], [evaluation_results['test_mape']], 
+                s=200, color='red', alpha=0.7)
+    ax2.set_xlabel('MAE')
+    ax2.set_ylabel('MAPE (%)')
+    ax2.set_title('Performance Trade-off')
+    ax2.grid(True, alpha=0.3)
+    
+    plt.suptitle(title, fontsize=16)
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_model_performance_summary(history, title="Model Performance Summary"):
+    """Plot training history - loss and MAE over epochs"""
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 5))
     
     # Training history - Loss
     ax1.plot(history.history['loss'], label='Training Loss', color='blue')
@@ -340,27 +503,6 @@ def plot_model_performance_summary(history, evaluation_results, title="Model Per
     ax2.set_ylabel('MAE')
     ax2.legend()
     ax2.grid(True, alpha=0.3)
-    
-    # Performance metrics
-    metrics = ['MAE', 'MAPE', 'RMSE']
-    values = [evaluation_results['test_mae'], evaluation_results['test_mape'], evaluation_results['rmse']]
-    bars = ax3.bar(metrics, values, color=['skyblue', 'lightcoral', 'lightgreen'])
-    ax3.set_title('Test Performance Metrics')
-    ax3.set_ylabel('Value')
-    ax3.grid(True, alpha=0.3)
-    
-    # Add value labels on bars
-    for bar, value in zip(bars, values):
-        ax3.text(bar.get_x() + bar.get_width()/2, bar.get_height() + max(values)*0.01, 
-                f'{value:.2f}', ha='center', va='bottom')
-    
-    # Model complexity vs performance
-    ax4.scatter([evaluation_results['test_mae']], [evaluation_results['test_mape']], 
-                s=200, color='red', alpha=0.7)
-    ax4.set_xlabel('MAE')
-    ax4.set_ylabel('MAPE (%)')
-    ax4.set_title('Performance Trade-off')
-    ax4.grid(True, alpha=0.3)
     
     plt.suptitle(title, fontsize=16)
     plt.tight_layout()

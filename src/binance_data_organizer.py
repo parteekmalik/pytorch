@@ -1,328 +1,305 @@
 import pandas as pd
 import numpy as np
-from typing import Dict, List, Tuple, Optional, Union, TYPE_CHECKING
-from dataclasses import dataclass
+from typing import Dict, List, Tuple
 from sklearn.preprocessing import MinMaxScaler
 import warnings
+
+from src.config import BaseConfig
 from .utils import download_binance_data, create_sequences
 
 warnings.filterwarnings("ignore", category=UserWarning, module="sklearn")
 warnings.filterwarnings("ignore", category=FutureWarning)
 
-if TYPE_CHECKING:
-    import tensorflow as tf
-
-@dataclass
-class DataConfig:
-    symbol: str
-    timeframe: str
-    start_time: str
-    end_time: str
-    sequence_length: int
-    prediction_length: int
-    train_split: float = 0.8
-
 class GroupedScaler:
-    def __init__(self):
-        self.scalers = {}
-        self.feature_groups = {}
-        self.feature_names = []
-        self.is_fitted = False
+    """
+    Scaler that groups OHLC features together for unified scaling.
     
-    def _categorize_features(self, feature_names: List[str]) -> Dict[str, List[int]]:
-        groups = {
-            'ohlc': [],
-            'volume': []
-        }
-        
-        for i, col in enumerate(feature_names):
-            col_lower = col.lower()
-            
-            if col_lower in ['open', 'high', 'low', 'close']:
-                groups['ohlc'].append(i)
-            elif col_lower == 'volume':
-                groups['volume'].append(i)
-        
-        return {k: v for k, v in groups.items() if v}
+    LOGIC:
+    - OHLC features (Open, High, Low, Close) are treated as a single group
+    - All OHLC values are combined into one flat array and scaled together
+    - This preserves relative relationships between Open, High, Low, Close within each sequence
+    - Each sequence is scaled independently (called from _scale_sequences)
     
+    WHY THIS APPROACH:
+    - Prevents High-Low relationship distortion that occurs when scaling OHLC separately
+    - Maintains candlestick chart integrity after scaling
+    - Each sequence gets its own min/max range for optimal scaling
     
-    def fit(self, X: np.ndarray, feature_names: List[str]) -> 'GroupedScaler':
-        self.feature_names = feature_names
-        
-        if X.ndim == 3:
-            X_reshaped = X.reshape(-1, X.shape[-1])
-        else:
-            X_reshaped = X
-        
-        self.feature_groups = self._categorize_features(feature_names)
-        
-        for group_name, feature_indices in self.feature_groups.items():
-            group_data = X_reshaped[:, feature_indices]
-            
-            if group_name == 'ohlc':
-                # OHLC scaled together
-                scaler = MinMaxScaler()
-                scaler.fit(group_data)
-                self.scalers[group_name] = scaler
-                
-            elif group_name == 'volume':
-                # Volume scaled separately
-                scaler = MinMaxScaler()
-                scaler.fit(group_data)
-                self.scalers[group_name] = scaler
-        
-        self.is_fitted = True
-        return self
+    INPUT FORMAT:
+    - Expects 2D array with shape (timesteps, 4) where columns are [Open, High, Low, Close]
+    - Each call to transform() processes one sequence independently
     
-    def transform(self, X: np.ndarray) -> np.ndarray:
-        if not self.is_fitted:
-            raise ValueError("Scaler must be fitted before transform")
-        
-        if X.ndim == 3:
-            X_reshaped = X.reshape(-1, X.shape[-1])
-            X_scaled = X_reshaped.copy()
-        else:
-            X_reshaped = X
-            X_scaled = X.copy()
-        
-        for group_name, feature_indices in self.feature_groups.items():
-            scaler = self.scalers[group_name]
-            X_scaled[:, feature_indices] = scaler.transform(X_reshaped[:, feature_indices])
-        
-        if X.ndim == 3:
-            X_scaled = X_scaled.reshape(X.shape)
-        
-        return X_scaled
+    OUTPUT FORMAT:
+    - Returns 2D array with same shape as input
+    - All values scaled to 0-1 range
+    - OHLC values scaled together as a unified group
+    """
     
-    def fit_transform(self, X: np.ndarray, feature_names: List[str]) -> np.ndarray:
-        return self.fit(X, feature_names).transform(X)
+    def _is_fit(self, input: np.ndarray) -> None:
+        """Validate input format before processing."""
+        if input.ndim != 2:
+            raise ValueError(f"Expected 2D array, got {input.ndim}D array")
+        
+        if input.shape[1] != 4:
+            raise ValueError(f"Expected 4 features (OHLC), got {input.shape[1]} features")
+        
+        if input.size == 0:
+            raise ValueError("Cannot fit on empty array")
+        
+        if np.any(np.isnan(input)) or np.any(np.isinf(input)):
+            raise ValueError("Array contains NaN or infinite values")
     
-    def inverse_transform(self, X: np.ndarray) -> np.ndarray:
-        if not self.is_fitted:
-            raise ValueError("Scaler must be fitted before inverse_transform")
+    def transform(self, input: np.ndarray) -> np.ndarray:
+        """
+        Scale a single sequence using grouped OHLC scaling.
         
-        if X.ndim == 3:
-            X_reshaped = X.reshape(-1, X.shape[-1])
-            X_inverse = X_reshaped.copy()
-        else:
-            X_reshaped = X
-            X_inverse = X.copy()
+        PROCESS:
+        1. Combine all OHLC values into one flat array for unified scaling
+        2. Scale OHLC combined array using single MinMaxScaler
+        3. Reshape OHLC back to original (timesteps, 4) shape
         
-        for group_name, feature_indices in self.feature_groups.items():
-            scaler = self.scalers[group_name]
-            X_inverse[:, feature_indices] = scaler.inverse_transform(X_reshaped[:, feature_indices])
+        This ensures all OHLC values in the sequence use the same min/max range,
+        preserving their relative relationships.
+        """
+        self._is_fit(input)
         
-        if X.ndim == 3:
-            X_inverse = X_inverse.reshape(X.shape)
+        input_scaled = input.copy()
         
-        return X_inverse
-    
-    def get_feature_groups(self) -> Dict[str, List[str]]:
-        if not self.is_fitted:
-            raise ValueError("Scaler must be fitted first")
+        # Step 1: Combine all OHLC values into one flat array for unified scaling
+        ohlc_combined = input.flatten().reshape(-1, 1)
         
-        return {
-            group_name: [self.feature_names[i] for i in feature_indices]
-            for group_name, feature_indices in self.feature_groups.items()
-        }
-
-
-def scale_data(X_train: np.ndarray, X_test: np.ndarray, y_train: np.ndarray, y_test: np.ndarray, feature_cols: List[str]) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, GroupedScaler, MinMaxScaler]:
-    scaler_X = GroupedScaler()
-    X_train_scaled = scaler_X.fit_transform(X_train, feature_cols)
-    X_test_scaled = scaler_X.transform(X_test)
-    
-    scaler_y = MinMaxScaler()
-    y_train_scaled = scaler_y.fit_transform(y_train)
-    y_test_scaled = scaler_y.transform(y_test)
-    
-    return X_train_scaled, X_test_scaled, y_train_scaled, y_test_scaled, scaler_X, scaler_y
+        # Step 2: Scale OHLC with single scaler
+        ohlc_scaler = MinMaxScaler()
+        ohlc_scaled = ohlc_scaler.fit_transform(ohlc_combined)
+        
+        # Step 3: Reshape OHLC back to original (timesteps, 4) shape
+        ohlc_scaled_reshaped = ohlc_scaled.reshape(input.shape[0], 4)
+        
+        # Step 4: Return scaled OHLC data
+        input_scaled = ohlc_scaled_reshaped
+        
+        return input_scaled
 
 
 class BinanceDataOrganizer:
-    def __init__(self, config: DataConfig):
+    def __init__(self, config: BaseConfig):
         self.config = config
-        self.scaler_X: Optional[GroupedScaler] = None
-        self.scaler_y: Optional[MinMaxScaler] = None
-        self.is_scalers_fitted = False
+        self.custom_scaler = GroupedScaler()
         self.raw_data = download_binance_data(
             symbol=self.config.symbol,
             interval=self.config.timeframe,
-            data_from=self.config.start_time,
-            data_to=self.config.end_time
+            data_from=self.config.start_date,
+            data_to=self.config.end_date
         )
         
         # Validate data format
         if self.raw_data is not None:
-            expected_cols = ['Open', 'High', 'Low', 'Close', 'Volume']
+            expected_cols = ['Open', 'High', 'Low', 'Close']
             if not all(col in self.raw_data.columns for col in expected_cols):
                 raise ValueError(f"Data must contain columns: {expected_cols}")
     
-    def process_all(self) -> bool:
-        # Data is already processed during download (OHLCV only)
-        return self.raw_data is not None
-    
     def _prepare_sequences(self, data: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray, List[str]]:
         return create_sequences(
-            data=data,
-            sequence_length=self.config.sequence_length,
-            prediction_length=self.config.prediction_length
+            data,
+            self.config.sequence_length,
+            self.config.prediction_length
         )
     
-    def _fit_scalers(self, X_train: np.ndarray, y_train: np.ndarray, feature_columns: List[str]) -> None:
-        self.scaler_X = GroupedScaler()
-        self.scaler_X.fit(X_train, feature_columns)
+    def get_unscaled_split_data(self) -> Dict[str, np.ndarray]:
+        input, output, feature_cols = self._prepare_sequences(self.raw_data)
         
-        # Target scaling: allow values beyond [0,1] range for better model performance
-        self.scaler_y = MinMaxScaler()
-        self.scaler_y.fit(y_train)
-        
-        self.is_scalers_fitted = True
-    
-    def get_unscaled_data(self, data_type: str = 'all') -> Dict[str, np.ndarray]:
-        if self.raw_data is None:
-            raise ValueError("No data available")
-        
-        X, y, feature_cols = self._prepare_sequences(self.raw_data)
-        
-        split_idx = int(len(X) * self.config.train_split)
-        X_train, X_test = X[:split_idx], X[split_idx:]
-        y_train, y_test = y[:split_idx], y[split_idx:]
-        
-        result = {
-            'X_train': X_train,
-            'X_test': X_test,
-            'y_train': y_train,
-            'y_test': y_test
-        }
-        
-        if data_type == 'train':
-            return {'X_train': X_train, 'y_train': y_train}
-        elif data_type == 'test':
-            return {'X_test': X_test, 'y_test': y_test}
-        else:
-            return result
-    
-    def get_scaled_data(self, data_type: str = 'all') -> Dict[str, np.ndarray]:
-        unscaled_data = self.get_unscaled_data(data_type)
-        
-        if not self.is_scalers_fitted:
-            X_train = unscaled_data['X_train']
-            y_train = unscaled_data['y_train']
-            _, _, feature_cols = self._prepare_sequences(self.raw_data)
-            self._fit_scalers(X_train, y_train, feature_cols)
-        
-        if data_type == 'train':
-            X_train_scaled = self.scaler_X.transform(unscaled_data['X_train'])
-            y_train_scaled = self.scaler_y.transform(unscaled_data['y_train'])
-            return {
-                'X_train_scaled': X_train_scaled,
-                'y_train_scaled': y_train_scaled
-            }
-        elif data_type == 'test':
-            X_test_scaled = self.scaler_X.transform(unscaled_data['X_test'])
-            y_test_scaled = self.scaler_y.transform(unscaled_data['y_test'])
-            return {
-                'X_test_scaled': X_test_scaled,
-                'y_test_scaled': y_test_scaled
-            }
-        else:
-            X_train_scaled = self.scaler_X.transform(unscaled_data['X_train'])
-            X_test_scaled = self.scaler_X.transform(unscaled_data['X_test'])
-            y_train_scaled = self.scaler_y.transform(unscaled_data['y_train'])
-            y_test_scaled = self.scaler_y.transform(unscaled_data['y_test'])
-            return {
-                'X_train_scaled': X_train_scaled,
-                'X_test_scaled': X_test_scaled,
-                'y_train_scaled': y_train_scaled,
-                'y_test_scaled': y_test_scaled
-            }
-    
-    def get_data_in_range(self, start_time: str, end_time: str, scaled: bool = True) -> Optional[Dict[str, np.ndarray]]:
-        if self.raw_data is None:
-            raise ValueError("No data available")
-        
-        # Since we don't have time columns, return all data
-        filtered_data = self.raw_data
-        
-        if len(filtered_data) < self.config.sequence_length:
-            return None
-        
-        X, y, feature_cols = self._prepare_sequences(filtered_data)
-        
-        result = {'X': X, 'y': y}
-        
-        if scaled and self.is_scalers_fitted:
-            X_scaled = self.scaler_X.transform(X)
-            y_scaled = self.scaler_y.transform(y)
-            result.update({'X_scaled': X_scaled, 'y_scaled': y_scaled})
-        
-        return result
-    
-    def get_scalers(self) -> Dict[str, Union[GroupedScaler, MinMaxScaler]]:
-        if not self.is_scalers_fitted:
-            raise ValueError("Scalers not fitted. Call get_scaled_data() first.")
-        
-        return {'X': self.scaler_X, 'y': self.scaler_y}
-    
-    def inverse_transform_targets(self, y_scaled: np.ndarray) -> np.ndarray:
-        """Inverse transform target values from scaled to original scale"""
-        if not self.is_scalers_fitted:
-            raise ValueError("Scalers not fitted. Call get_scaled_data() first.")
-        
-        return self.scaler_y.inverse_transform(y_scaled)
-    
-    def get_feature_info(self) -> Dict[str, Union[List[str], int, Tuple[int, int]]]:
-        if self.raw_data is None:
-            raise ValueError("No data available")
-        
-        _, _, feature_cols = self._prepare_sequences(self.raw_data)
+        split_idx = int(len(input) * self.config.train_split)
+        input_train, input_test = input[:split_idx], input[split_idx:]
+        output_train, output_test = output[:split_idx], output[split_idx:]
         
         return {
-            'feature_columns': feature_cols,
-            'num_features': len(feature_cols),
-            'sequence_length': self.config.sequence_length,
-            'prediction_length': self.config.prediction_length,
-            'data_shape': self.raw_data.shape,
-            'total_sequences': len(self.raw_data) - self.config.sequence_length - self.config.prediction_length + 1
+            'input_train': input_train,
+            'input_test': input_test,
+            'output_train': output_train,
+            'output_test': output_test
         }
     
-    def get_data_summary(self) -> Dict[str, Union[str, int, float]]:
-        """Get summary information about the loaded data"""
-        if self.raw_data is None:
-            raise ValueError("No data available")
+    def get_scaled_data(self) -> Dict[str, np.ndarray]:
+        unscaled_data = self.get_unscaled_split_data()
+
+        # Scale input data and get scaling parameters
+        input_train_scaled, input_scaling_params = self._scale_sequences_with_params(unscaled_data['input_train'])
+        input_test_scaled, _ = self._scale_sequences_with_params(unscaled_data['input_test'])
+        
+        # Scale output data using input scaling parameters
+        output_train_scaled = self._scale_output_with_input_params(unscaled_data['output_train'], input_scaling_params)
+        output_test_scaled = self._scale_output_with_input_params(unscaled_data['output_test'], input_scaling_params)
         
         return {
-            'symbol': self.config.symbol,
-            'timeframe': self.config.timeframe,
-            'date_range': f"{self.config.start_time} to {self.config.end_time}",
-            'total_rows': len(self.raw_data),
-            'columns': list(self.raw_data.columns),
-            'price_range': {
-                'min': self.raw_data[['Open', 'High', 'Low', 'Close']].min().min(),
-                'max': self.raw_data[['Open', 'High', 'Low', 'Close']].max().max()
-            },
-            'volume_range': {
-                'min': self.raw_data['Volume'].min(),
-                'max': self.raw_data['Volume'].max()
+            'input_train_scaled': input_train_scaled,
+            'input_test_scaled': input_test_scaled,
+            'output_train_scaled': output_train_scaled,
+            'output_test_scaled': output_test_scaled
+        }
+    
+    def _scale_sequences(self, sequences: np.ndarray) -> np.ndarray:
+        """
+        Scale each sequence independently using GroupedScaler.
+        
+        WHY INDEPENDENT SCALING:
+        - Each sequence gets its own min/max range for optimal scaling
+        - Prevents one sequence with extreme values from affecting others
+        - Maintains relative relationships within each sequence
+        - Essential for time series prediction where each sequence is independent
+        
+        PROCESS:
+        1. Iterate through each sequence in the batch
+        2. Create new GroupedScaler for each sequence
+        3. Scale each sequence independently
+        4. Combine all scaled sequences back into 3D array
+        
+        INPUT: 3D array (num_sequences, sequence_length, features)
+        OUTPUT: 3D array (num_sequences, sequence_length, features) - same shape, scaled values
+        """
+        scaled_sequences = []
+        
+        for i in range(len(sequences)):
+            # Get individual sequence (shape: [sequence_length, features])
+            sequence = sequences[i]
+            
+            # Scale this sequence independently using GroupedScaler
+            scaler = GroupedScaler()
+            scaled_sequence = scaler.transform(sequence)
+            scaled_sequences.append(scaled_sequence)
+        
+        return np.array(scaled_sequences)
+    
+    def _scale_sequences_with_params(self, sequences: np.ndarray) -> Tuple[np.ndarray, List[Dict]]:
+        """
+        Scale input sequences and return scaling parameters for output scaling.
+        
+        LOGIC:
+        - Scale each input sequence independently
+        - Store the min/max values used for each sequence
+        - Return both scaled sequences and scaling parameters
+        
+        OUTPUT:
+        - scaled_sequences: 3D array of scaled input data
+        - scaling_params: List of dicts with min/max values for each sequence
+        """
+        scaled_sequences = []
+        scaling_params = []
+        
+        for i in range(len(sequences)):
+            sequence = sequences[i]
+            
+            # Get min/max values from input sequence (OHLC only)
+            ohlc_data = sequence[:, [0, 1, 2, 3]]
+            
+            # Calculate min/max for OHLC (combined)
+            ohlc_min = ohlc_data.min()
+            ohlc_max = ohlc_data.max()
+            
+            # Store scaling parameters
+            params = {
+                'ohlc_min': ohlc_min,
+                'ohlc_max': ohlc_max
             }
-        }
+            scaling_params.append(params)
+            
+            # Scale the sequence
+            scaler = GroupedScaler()
+            scaled_sequence = scaler.transform(sequence)
+            scaled_sequences.append(scaled_sequence)
+        
+        return np.array(scaled_sequences), scaling_params
     
-    def get_sequence_info(self) -> Dict[str, int]:
-        """Get information about sequence generation"""
-        if self.raw_data is None:
-            raise ValueError("No data available")
+    def _scale_output_with_input_params(self, output_data: np.ndarray, input_scaling_params: List[Dict]) -> np.ndarray:
+        """
+        Scale output data using input scaling parameters.
         
-        total_sequences = len(self.raw_data) - self.config.sequence_length - self.config.prediction_length + 1
-        train_sequences = int(total_sequences * self.config.train_split)
-        test_sequences = total_sequences - train_sequences
+        LOGIC:
+        - Use the same min/max values from input data to scale output
+        - Output can go beyond 0-1 range if output values exceed input range
+        - This maintains the relationship between input and output scaling
         
-        return {
-            'total_sequences': total_sequences,
-            'train_sequences': train_sequences,
-            'test_sequences': test_sequences,
-            'sequence_length': self.config.sequence_length,
-            'prediction_length': self.config.prediction_length,
-            'features_per_timestep': 5  # OHLCV
-        }
+        PROCESS:
+        1. For each output sequence, get corresponding input scaling params
+        2. Apply same OHLC min/max to output OHLC values
+        3. This allows output to potentially exceed 0-1 range
+        """
+        scaled_output = output_data.copy()
+        
+        for i in range(len(output_data)):
+            output_sequence = output_data[i]
+            params = input_scaling_params[i]
+            
+            # Reshape output sequence to (prediction_length, 3) for HLC
+            # Output is flattened: [H, L, C, H, L, C, ...] for prediction_length timesteps
+            prediction_length = len(output_sequence) // 3
+            output_reshaped = output_sequence.reshape(prediction_length, 3)
+            
+            # Get HLC from reshaped output
+            ohlc_output = output_reshaped  # H, L, C (no Open in output)
+            
+            # Scale using input min/max values
+            ohlc_scaled = (ohlc_output - params['ohlc_min']) / (params['ohlc_max'] - params['ohlc_min'])
+            
+            # Flatten scaled OHLC back to original format
+            scaled_sequence = ohlc_scaled.flatten()
+            scaled_output[i] = scaled_sequence
+        
+        return scaled_output
+    
+    def add_open_to_output(self, input_sequence: np.ndarray, output_sequence: np.ndarray, prediction_length: int) -> np.ndarray:
+        """
+        Add Open column to output sequence for proper candlestick charting.
+        
+        LOGIC:
+        - Output data only contains High, Low, Close (HLC) values
+        - Open values are derived from the previous Close
+        - First Open = last Close from input sequence
+        - Subsequent Opens = previous Close from output sequence
+        
+        INPUT:
+        - input_sequence: 2D array (timesteps, 4) with OHLC data
+        - output_sequence: 1D array (prediction_length * 3) with flattened HLC data
+        - prediction_length: number of prediction timesteps
+        
+        OUTPUT:
+        - 2D array (prediction_length, 4) with complete OHLC data
+        """
+        # Reshape output from flattened to (prediction_length, 3) format (HLC only)
+        output_reshaped = output_sequence.reshape(prediction_length, 3)
+        
+        # Create output with Open column
+        output_with_open = np.zeros((prediction_length, 4))
+        output_with_open[0, 0] = input_sequence[-1, 3]  # First Open = last input Close
+        output_with_open[:, 1] = output_reshaped[:, 0]  # High
+        output_with_open[:, 2] = output_reshaped[:, 1]  # Low  
+        output_with_open[:, 3] = output_reshaped[:, 2]  # Close
+        
+        # Set Open for remaining timesteps (each Open = previous Close)
+        for i in range(1, prediction_length):
+            output_with_open[i, 0] = output_with_open[i-1, 3]  # Open = previous Close
+        
+        return output_with_open
+    
+    def combine_input_output_for_chart(self, input_sequence: np.ndarray, output_sequence: np.ndarray) -> np.ndarray:
+        """
+        Combine input and output sequences for continuous candlestick charting.
+        
+        LOGIC:
+        - Takes input sequence (OHLC) and output sequence (flattened HLC)
+        - Adds proper Open values to output sequence
+        - Combines them into continuous OHLC data for charting
+        
+        INPUT:
+        - input_sequence: 2D array (sequence_length, 4) with OHLC data
+        - output_sequence: 1D array (prediction_length * 3) with flattened HLC data
+        
+        OUTPUT:
+        - 2D array (sequence_length + prediction_length, 4) with continuous OHLC data
+        """
+        # Add Open column to output sequence
+        output_with_open = self.add_open_to_output(input_sequence, output_sequence, self.config.prediction_length)
+        
+        # Combine input and output
+        combined = np.vstack([input_sequence, output_with_open])
+        return combined
 

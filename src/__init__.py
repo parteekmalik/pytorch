@@ -19,10 +19,7 @@ from .model_utils import (
 )
 
 from .binance_data_organizer import (
-    BinanceDataOrganizer,
-    DataConfig,
-    GroupedScaler,
-    scale_data
+    BinanceDataOrganizer
 )
 
 from .plotting_utils import (
@@ -33,9 +30,10 @@ from .plotting_utils import (
     plot_feature_importance,
     plot_feature_analysis,
     plot_candlestick_chart,
-    plot_prediction_comparison,
     plot_prediction_accuracy_distribution,
-    plot_model_performance_summary
+    plot_model_performance_summary,
+    plot_test_performance_metrics,
+    plot_prediction_candlestick
 )
 
 from .config import (
@@ -54,9 +52,6 @@ __all__ = [
     'get_memory_stats',
     'print_memory_stats',
     
-    # Data utilities (now part of binance_data_organizer)
-    'scale_data',
-    
     # Model utilities
     'create_lstm_model',
     'evaluate_model',
@@ -64,8 +59,6 @@ __all__ = [
     
     # Binance Data Organizer (includes normalization utilities)
     'BinanceDataOrganizer',
-    'DataConfig',
-    'GroupedScaler',
     
     # Plotting utilities
     'plot_training_history',
@@ -75,9 +68,10 @@ __all__ = [
     'plot_feature_importance',
     'plot_feature_analysis',
     'plot_candlestick_chart',
-    'plot_prediction_comparison',
     'plot_prediction_accuracy_distribution',
     'plot_model_performance_summary',
+    'plot_test_performance_metrics',
+    'plot_prediction_candlestick',
     
     # Configuration
     'BaseConfig',
