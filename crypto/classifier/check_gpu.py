@@ -30,7 +30,10 @@ def check_gpu():
         gpu_available = True
         
     except Exception as e:
-        print(f"\n✗ GPU not available: {e}")
+        print(f"\n✗ GPU not available")
+        print(f"Error: {e}")
+        import traceback
+        traceback.print_exc()
         gpu_available = False
     
     # Check multiprocessing context
