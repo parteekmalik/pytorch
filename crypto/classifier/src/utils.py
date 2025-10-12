@@ -38,16 +38,22 @@ def check_gpu_availability() -> Tuple[bool, str]:
 def get_array_module():
     """
     Get the appropriate array module (CuPy if available, else NumPy).
+    Disables GPU in multiprocessing worker processes to avoid CUDA errors.
     
     Returns:
         Module for array operations (cp or np)
     """
+    import multiprocessing
+    import numpy as np
+    
+    if multiprocessing.current_process().name != 'MainProcess':
+        return np
+    
     try:
         import cupy as cp
         cp.cuda.Device(0).compute_capability
         return cp
     except Exception:
-        import numpy as np
         return np
 
 
