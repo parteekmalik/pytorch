@@ -12,15 +12,6 @@ from src.image_generator import create_images_from_data
 
 
 def load_config(config_path: str = 'config/config.yaml') -> dict:
-    """
-    Load configuration from YAML file.
-    
-    Args:
-        config_path: Path to config file
-        
-    Returns:
-        Configuration dictionary
-    """
     config_full_path = Path(__file__).parent / config_path
     with open(config_full_path, 'r') as f:
         config = yaml.safe_load(f)
@@ -28,12 +19,6 @@ def load_config(config_path: str = 'config/config.yaml') -> dict:
 
 
 def run_pipeline(config_path: str = 'config/config.yaml'):
-    """
-    Execute the full data download and image generation pipeline.
-    
-    Args:
-        config_path: Path to configuration file
-    """
     config = load_config(config_path)
     
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')

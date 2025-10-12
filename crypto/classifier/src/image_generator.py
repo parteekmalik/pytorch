@@ -134,23 +134,6 @@ def create_images_from_data(
     metadata: Optional[Dict] = None,
     rendering_config: Optional[Dict] = None
 ) -> str:
-    """
-    Create images from price data with configurable storage format and GPU rendering.
-    
-    Args:
-        data: DataFrame with 'Close' column
-        output_path: Output path (folder for JPEG, file for HDF5/NPZ/Zarr)
-        seq_len: Length of each price sequence
-        line_width: Width of line in plots
-        batch_size: Number of images to process per batch
-        resolution: Dict with 'width', 'height', 'dpi'
-        storage_config: Dict with 'format', 'mode', 'images_per_file'
-        metadata: Additional metadata to store
-        rendering_config: Dict with 'mode', 'gpu_batch_size', 'fallback_on_error'
-        
-    Returns:
-        Path to output (folder or file)
-    """
     if resolution is None:
         resolution = {'width': 800, 'height': 500, 'dpi': 100}
     

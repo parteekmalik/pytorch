@@ -16,7 +16,7 @@ image:
     dpi: 100
   rendering:
     mode: auto
-    gpu_batch_size: 1000
+    gpu_batch_size: 500
     fallback_on_error: true
   storage:
     format: hdf5
@@ -24,10 +24,10 @@ image:
     images_per_file: 50000
 
 paths:
-  raw_data: data/raw
-  processed_data: data/processed
-  models: models
-  logs: logs
+  raw_data: ../data/raw
+  processed_data: ../data/processed
+  models: ../models
+  logs: ../logs
 
 pipeline:
   skip_existing_images: true
