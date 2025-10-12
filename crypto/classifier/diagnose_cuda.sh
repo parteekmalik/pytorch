@@ -30,9 +30,17 @@ try:
     try:
         print('✓ CUDA available:', cp.cuda.is_available())
         print('✓ Device count:', cp.cuda.runtime.getDeviceCount())
-        print('✓ Device 0:', cp.cuda.Device(0).name)
+        device = cp.cuda.Device(0)
+        props = cp.cuda.runtime.getDeviceProperties(0)
+        print('✓ Device 0:', props['name'].decode())
+        print('✓ Compute Capability:', device.compute_capability)
+        mem_info = device.mem_info
+        print('✓ Total Memory: {:.2f} GB'.format(mem_info[1] / 1024**3))
+        print('✓ Free Memory: {:.2f} GB'.format(mem_info[0] / 1024**3))
     except Exception as e:
         print('✗ CUDA error:', e)
+        import traceback
+        traceback.print_exc()
 except ImportError:
     print('✗ CuPy not installed')
 "

@@ -15,10 +15,12 @@ def check_gpu():
         
         # Get device info
         device = cp.cuda.Device(0)
-        print(f"✓ GPU Device 0: {device.name}")
+        props = cp.cuda.runtime.getDeviceProperties(0)
+        print(f"✓ GPU Device 0: {props['name'].decode()}")
         print(f"  - Compute Capability: {device.compute_capability}")
-        print(f"  - Total Memory: {device.mem_info[1] / 1024**3:.2f} GB")
-        print(f"  - Free Memory: {device.mem_info[0] / 1024**3:.2f} GB")
+        mem_info = device.mem_info
+        print(f"  - Total Memory: {mem_info[1] / 1024**3:.2f} GB")
+        print(f"  - Free Memory: {mem_info[0] / 1024**3:.2f} GB")
         
         # Test a simple operation
         a = cp.array([1, 2, 3])
