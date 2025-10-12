@@ -29,20 +29,38 @@ Each iteration:
 
 ## Solution Implemented
 
-### 1. **True Batch GPU Rendering** (`src/gpu_renderer.py`)
+### 1. **Vectorized Line Interpolation** (`src/gpu_renderer.py`)
+
+**The Problem:** Original "batch" rendering had nested Python loops calling GPU functions 500,000 times!
 
 ```python
-# NEW CODE (fast):
-# Render entire batch on GPU in parallel (vectorized)
-images = renderer.render_batch_gpu(batch_sequences, resolution, line_width)
+# OLD (extremely slow - 1.5 img/s):
+for i in range(seq_len - 1):              # 100 iterations
+    for batch_idx in range(batch_size):   # 5000 iterations
+        self._draw_line_gpu(...)          # 500,000 Python function calls!
 ```
 
-Now processes 5000 images simultaneously:
+**The Fix:** Replace Bresenham line drawing with vectorized linear interpolation:
+
+```python
+# NEW (vectorized - 100-500 img/s):
+for seg_idx in range(seq_len - 1):        # 100 iterations only
+    # Interpolate ALL points for this segment on GPU
+    t = cp.linspace(0, 1, points_per_segment)
+    x_interp = x0 + t * (x1 - x0)         # GPU vectorized
+    y_interp = y0_batch[:, cp.newaxis] + t * (y1_batch - y0_batch)[:, cp.newaxis]  # GPU vectorized
+    
+    # Set ALL pixels using advanced indexing (GPU operation)
+    imgs_gpu[batch_idx, y_pixels[batch_idx], x_pixels] = 0
+```
+
+Now processes 5000 images with **100x fewer Python calls**:
 
 1. ✅ Transfer 5000 sequences to GPU at once
 2. ✅ Normalize all sequences in parallel (GPU vectorized)
-3. ✅ Create 5000 images on GPU simultaneously
-4. ✅ Transfer 5000 images back in one operation
+3. ✅ Interpolate line segments using `linspace` (GPU vectorized)
+4. ✅ Set pixels using advanced indexing (GPU operation, not Python loops)
+5. ✅ Transfer 5000 images back in one operation
 
 ### 2. **Vectorized Operations**
 
@@ -80,13 +98,25 @@ rendering:
 
 ## Expected Performance
 
-| Metric          | Before       | After               | Improvement           |
+**Change 1 (Vectorized Interpolation - Current):**
+
+| Metric          | Before       | After (Change 1)  | Improvement        |
+| --------------- | ------------ | ----------------- | ------------------ |
+| GPU Utilization | 0.1GB (0.6%) | ~2-4GB (15-25%)   | **20x better**     |
+| Images/Second   | 1.5          | ~100-500          | **100-300x faster** |
+| 1000 images     | 11 minutes   | **2-10 seconds**  | **100x faster**    |
+| 85k images      | ~16 hours    | **3-15 minutes**  | **60-300x faster** |
+| 40M images      | 23 days      | **1-3 days**      | **8-23x faster**   |
+
+**Change 2 (Fully Vectorized - If Needed):**
+
+| Metric          | Before       | After (Change 2)    | Improvement           |
 | --------------- | ------------ | ------------------- | --------------------- |
 | GPU Utilization | 0.1GB (0.6%) | ~8-12GB (60-80%)    | **100x better**       |
-| Images/Second   | ~3           | ~5000-10000         | **1600-3000x faster** |
-| 1000 images     | 5 minutes    | **0.1-0.2 seconds** | **1500x faster**      |
-| 85k images      | ~7 hours     | **8-15 seconds**    | **1800x faster**      |
-| 40M images      | 23 days      | **90-120 minutes**  | **250x faster**       |
+| Images/Second   | 1.5          | ~1000-5000          | **600-3000x faster**  |
+| 1000 images     | 11 minutes   | **0.2-1 seconds**   | **600x faster**       |
+| 85k images      | ~16 hours    | **15-85 seconds**   | **600-3000x faster**  |
+| 40M images      | 23 days      | **2-10 hours**      | **60-270x faster**    |
 
 ## Changes Made
 

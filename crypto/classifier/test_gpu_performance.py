@@ -24,10 +24,11 @@ line_width = 3
 
 # Test different batch sizes
 test_configs = [
-    {'name': 'Single Image', 'batch_size': 1, 'iterations': 10},
-    {'name': 'Small Batch', 'batch_size': 100, 'iterations': 10},
-    {'name': 'Medium Batch', 'batch_size': 1000, 'iterations': 5},
-    {'name': 'Large Batch', 'batch_size': 5000, 'iterations': 2},
+    {'name': 'Single Image', 'batch_size': 1, 'iterations': 5},
+    {'name': 'Small Batch (10)', 'batch_size': 10, 'iterations': 5},
+    {'name': 'Small Batch (100)', 'batch_size': 100, 'iterations': 5},
+    {'name': 'Medium Batch (1000)', 'batch_size': 1000, 'iterations': 3},
+    {'name': 'Large Batch (5000)', 'batch_size': 5000, 'iterations': 2},
 ]
 
 print("\n" + "=" * 70)

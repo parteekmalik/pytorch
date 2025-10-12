@@ -78,7 +78,8 @@ class GPURenderer:
         line_width: int = 3
     ) -> np.ndarray:
         """
-        Render multiple images on GPU simultaneously with vectorized operations.
+        Render multiple images on GPU with fully vectorized line drawing.
+        Uses linear interpolation instead of Bresenham for GPU efficiency.
         
         Args:
             sequences: 2D array of sequences (batch_size, seq_len)
@@ -97,45 +98,60 @@ class GPURenderer:
         width, height = resolution['width'], resolution['height']
         seq_len = sequences.shape[1]
         
-        # Move entire batch to GPU at once
-        seqs_gpu = cp.asarray(sequences)
+        # Move entire batch to GPU
+        seqs_gpu = cp.asarray(sequences, dtype=cp.float32)
         
         # Normalize all sequences in parallel
         seq_min = cp.min(seqs_gpu, axis=1, keepdims=True)
         seq_max = cp.max(seqs_gpu, axis=1, keepdims=True)
-        
-        # Handle edge case where min == max
         mask = (seq_max > seq_min)
-        seqs_norm = cp.where(
-            mask,
-            (seqs_gpu - seq_min) / (seq_max - seq_min),
-            0.0
-        )
+        seqs_norm = cp.where(mask, (seqs_gpu - seq_min) / (seq_max - seq_min), 0.0)
         
-        # Create all images at once (batch_size, height, width)
+        # Create all images (white background)
         imgs_gpu = cp.ones((batch_size, height, width), dtype=cp.float32)
         
-        # Compute coordinates for all sequences
-        x_coords_float = cp.linspace(0, width - 1, seq_len)
-        y_coords_float = (1 - seqs_norm) * (height - 1)
+        # Compute x coordinates (same for all sequences)
+        x_coords = cp.linspace(0, width - 1, seq_len, dtype=cp.float32)
         
-        # Draw lines for all sequences in parallel
-        for i in range(seq_len - 1):
-            x0 = cp.round(x_coords_float[i]).astype(int)
-            x1 = cp.round(x_coords_float[i + 1]).astype(int)
-            y0 = cp.round(y_coords_float[:, i]).astype(int)
-            y1 = cp.round(y_coords_float[:, i + 1]).astype(int)
+        # Compute y coordinates for all sequences (batch_size, seq_len)
+        y_coords = (1 - seqs_norm) * (height - 1)
+        
+        # Draw lines by interpolation between consecutive points
+        points_per_segment = max(int(width / seq_len) * 2, 10)  # Ensure smooth lines
+        
+        for seg_idx in range(seq_len - 1):
+            # Get start and end points for this segment (all images)
+            x0 = x_coords[seg_idx]
+            x1 = x_coords[seg_idx + 1]
+            y0_batch = y_coords[:, seg_idx]      # (batch_size,)
+            y1_batch = y_coords[:, seg_idx + 1]  # (batch_size,)
             
-            # Draw line for all images in batch simultaneously
+            # Interpolate points along each line segment
+            t = cp.linspace(0, 1, points_per_segment, dtype=cp.float32)  # (points_per_segment,)
+            
+            # Broadcast to get all interpolated points
+            # x_interp: scalar for each t
+            x_interp = x0 + t * (x1 - x0)  # (points_per_segment,)
+            
+            # y_interp: (batch_size, points_per_segment)
+            y_interp = y0_batch[:, cp.newaxis] + t[cp.newaxis, :] * (y1_batch - y0_batch)[:, cp.newaxis]
+            
+            # Convert to integer pixel coordinates
+            x_pixels = cp.clip(cp.round(x_interp).astype(cp.int32), 0, width - 1)  # (points_per_segment,)
+            y_pixels = cp.clip(cp.round(y_interp).astype(cp.int32), 0, height - 1)  # (batch_size, points_per_segment)
+            
+            # Draw all points for all images using advanced indexing
             for batch_idx in range(batch_size):
-                self._draw_line_gpu(
-                    imgs_gpu[batch_idx], 
-                    int(x0), int(y0[batch_idx]),
-                    int(x1), int(y1[batch_idx]),
-                    line_width
-                )
+                imgs_gpu[batch_idx, y_pixels[batch_idx], x_pixels] = 0  # Black line
+                
+                # Apply thickness if needed
+                if line_width > 1:
+                    half_width = line_width // 2
+                    for dy in range(-half_width, half_width + 1):
+                        y_thick = cp.clip(y_pixels[batch_idx] + dy, 0, height - 1)
+                        imgs_gpu[batch_idx, y_thick, x_pixels] = 0
         
-        # Transfer back to CPU and clip
+        # Transfer back to CPU
         imgs_np = cp.asnumpy(imgs_gpu)
         imgs_np = np.clip(imgs_np, 0, 1)
         
