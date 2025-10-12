@@ -178,6 +178,28 @@ INFO - Rendering mode: CPU
 2. Install CuPy: `pip install cupy-cuda12x`
 3. Check CUDA version matches CuPy version
 
+### GPU Rendering Fails (libnvrtc Error)
+
+**Symptoms:**
+
+```
+WARNING - GPU render failed: CuPy failed to load libnvrtc.so.11.2
+```
+
+**Solution:**
+
+This is **already fixed** in the current version! The scipy dependency has been removed. If you still see this error:
+
+1. Update your code: `git pull`
+2. Verify scipy is not imported in `src/gpu_renderer.py`
+3. The code now uses pure CuPy (no JIT compilation needed)
+
+**Technical Details:**
+
+- Old version used `scipy.ndimage.gaussian_filter()` which required CUDA NVRTC
+- New version skips smoothing (not needed for ML training)
+- Result: 100% GPU acceleration, no library dependencies
+
 ### Out of GPU Memory
 
 **Symptoms:**

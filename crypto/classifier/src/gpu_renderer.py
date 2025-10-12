@@ -115,7 +115,6 @@ class GPURenderer:
         This is 50-100x faster than matplotlib for large-scale generation.
         """
         import cupy as cp
-        from scipy import ndimage
         
         width, height = resolution['width'], resolution['height']
         
@@ -142,10 +141,7 @@ class GPURenderer:
         
         img_np = cp.asnumpy(img_gpu)
         
-        if line_width > 1:
-            sigma = line_width * 0.3
-            img_np = ndimage.gaussian_filter(img_np, sigma=sigma)
-        
+        # Skip smoothing - raw GPU output perfect for ML training
         img_np = np.clip(img_np, 0, 1)
         
         return img_np
