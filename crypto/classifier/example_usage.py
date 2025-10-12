@@ -36,45 +36,51 @@ sequences = create_price_sequences(closing_prices, seq_len=50)
 logger.info(f"Created {len(sequences)} sequences of length 50")
 logger.info(f"Shape: {sequences.shape}")
 
-# Example 3: Generate images as JPEG
-logger.info("\n=== Example 3a: Generate Images as JPEG ===")
+# Example 3: Generate images with GPU acceleration (if available)
+logger.info("\n=== Example 3a: Generate Images with GPU (Auto-detect) ===")
 images_folder = create_images_from_data(
     data=data,
-    output_path='crypto/classifier/data/processed/example_images_jpeg',
-    seq_len=50,
-    line_width=3,
-    batch_size=100,
-    resolution={'width': 800, 'height': 500, 'dpi': 100},
-    storage_config={'format': 'jpeg', 'mode': 'single', 'images_per_file': 50000}
-)
-logger.info(f"JPEG images saved to: {images_folder}")
-
-# Example 3b: Generate images as HDF5
-logger.info("\n=== Example 3b: Generate Images as HDF5 ===")
-from src.image_storage import load_images_from_storage, get_storage_info
-
-hdf5_path = create_images_from_data(
-    data=data,
-    output_path='crypto/classifier/data/processed/example_images.h5',
+    output_path='crypto/classifier/data/processed/example_images_gpu',
     seq_len=50,
     line_width=3,
     batch_size=100,
     resolution={'width': 800, 'height': 500, 'dpi': 100},
     storage_config={'format': 'hdf5', 'mode': 'single', 'images_per_file': 50000},
-    metadata={'symbol': 'BTCUSDT', 'interval': '1m'}
+    rendering_config={'mode': 'auto', 'gpu_batch_size': 1000, 'fallback_on_error': True}
 )
-logger.info(f"HDF5 file saved to: {hdf5_path}")
+logger.info(f"Images saved (GPU or CPU auto-detected)")
 
-# Get info about HDF5 file
-info = get_storage_info(hdf5_path, 'hdf5')
-logger.info(f"HDF5 Info: {info['num_images']} images, "
-           f"shape {info['image_shape']}, "
-           f"{info['file_size_mb']:.2f} MB")
+# Example 3b: Force CPU rendering (for testing fallback)
+logger.info("\n=== Example 3b: Force CPU Rendering ===")
+images_folder_cpu = create_images_from_data(
+    data=data,
+    output_path='crypto/classifier/data/processed/example_images_cpu',
+    seq_len=50,
+    line_width=3,
+    batch_size=100,
+    resolution={'width': 800, 'height': 500, 'dpi': 100},
+    storage_config={'format': 'hdf5', 'mode': 'single', 'images_per_file': 50000},
+    rendering_config={'mode': 'cpu', 'gpu_batch_size': 1000, 'fallback_on_error': True}
+)
+logger.info(f"CPU-rendered images saved to: {images_folder_cpu}")
 
-# Load some images from HDF5
-images, sequences, metadata = load_images_from_storage(hdf5_path, 'hdf5', indices=slice(0, 5))
-logger.info(f"Loaded {len(images)} images from HDF5")
-logger.info(f"Metadata: {metadata}")
+# Example 3c: Load images from HDF5
+logger.info("\n=== Example 3c: Load Images from HDF5 ===")
+from src.image_storage import load_images_from_storage, get_storage_info
+
+if os.path.exists('crypto/classifier/data/processed/example_images_gpu.h5'):
+    hdf5_path = 'crypto/classifier/data/processed/example_images_gpu.h5'
+    
+    # Get info about HDF5 file
+    info = get_storage_info(hdf5_path, 'hdf5')
+    logger.info(f"HDF5 Info: {info['num_images']} images, "
+               f"shape {info['image_shape']}, "
+               f"{info['file_size_mb']:.2f} MB")
+    
+    # Load some images from HDF5
+    images, sequences, metadata = load_images_from_storage(hdf5_path, 'hdf5', indices=slice(0, 5))
+    logger.info(f"Loaded {len(images)} images from HDF5")
+    logger.info(f"Metadata: {metadata}")
 
 # Example 4: Model storage (demonstration)
 logger.info("\n=== Example 4: Model Storage ===")

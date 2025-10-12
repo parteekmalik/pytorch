@@ -10,6 +10,7 @@ from typing import Tuple, Dict, Optional
 import pandas as pd
 from .utils import setup_logger, check_gpu_availability, get_array_module
 from .image_storage import ImageStorageWriter
+from .gpu_renderer import GPURenderer
 
 logger = setup_logger(__name__)
 
@@ -130,10 +131,11 @@ def create_images_from_data(
     batch_size: int = 10000,
     resolution: Optional[Dict[str, int]] = None,
     storage_config: Optional[Dict] = None,
-    metadata: Optional[Dict] = None
+    metadata: Optional[Dict] = None,
+    rendering_config: Optional[Dict] = None
 ) -> str:
     """
-    Create images from price data with configurable storage format.
+    Create images from price data with configurable storage format and GPU rendering.
     
     Args:
         data: DataFrame with 'Close' column
@@ -144,6 +146,7 @@ def create_images_from_data(
         resolution: Dict with 'width', 'height', 'dpi'
         storage_config: Dict with 'format', 'mode', 'images_per_file'
         metadata: Additional metadata to store
+        rendering_config: Dict with 'mode', 'gpu_batch_size', 'fallback_on_error'
         
     Returns:
         Path to output (folder or file)
@@ -154,6 +157,9 @@ def create_images_from_data(
     if storage_config is None:
         storage_config = {'format': 'jpeg', 'mode': 'single', 'images_per_file': 50000}
     
+    if rendering_config is None:
+        rendering_config = {'mode': 'auto', 'gpu_batch_size': 1000, 'fallback_on_error': True}
+    
     storage_format = storage_config['format'].lower()
     
     from .data_loader import create_price_sequences
@@ -161,7 +167,10 @@ def create_images_from_data(
     closing_prices = data['Close'].values
     sequences = create_price_sequences(closing_prices, seq_len)
     
-    logger.info(f"Generating {len(sequences)} images using {GPU_BACKEND}")
+    renderer = GPURenderer(mode=rendering_config['mode'])
+    
+    logger.info(f"Generating {len(sequences)} images")
+    logger.info(f"Rendering mode: {renderer.mode.upper()}")
     logger.info(f"Storage format: {storage_format} ({storage_config['mode']} mode)")
     logger.info(f"Resolution: {resolution['width']}x{resolution['height']} @ {resolution['dpi']} DPI")
     
@@ -170,15 +179,16 @@ def create_images_from_data(
     metadata['seq_len'] = seq_len
     metadata['line_width'] = line_width
     metadata['num_sequences'] = len(sequences)
+    metadata['rendering_mode'] = renderer.mode
     
     if storage_format == 'jpeg':
         return _create_images_jpeg(
-            sequences, output_path, line_width, resolution, batch_size
+            sequences, output_path, line_width, resolution, batch_size, renderer
         )
     else:
         return _create_images_storage(
             sequences, output_path, line_width, resolution, batch_size,
-            storage_config, metadata
+            storage_config, metadata, renderer, rendering_config
         )
 
 
@@ -187,31 +197,59 @@ def _create_images_jpeg(
     images_folder: str,
     line_width: int,
     resolution: Dict[str, int],
-    batch_size: int
+    batch_size: int,
+    renderer: GPURenderer
 ) -> str:
-    """Create images as individual JPEG files."""
+    """Create images as individual JPEG files using specified renderer."""
     if os.path.exists(images_folder) and os.listdir(images_folder):
         logger.info(f"Images already exist in {images_folder}, skipping generation")
         return images_folder
     
     os.makedirs(images_folder, exist_ok=True)
     
-    max_workers = cpu_count() - 1
-    
-    with ProcessPoolExecutor(max_workers=max_workers) as executor:
-        args_list = [
-            (i, seq, line_width, resolution, images_folder) 
-            for i, seq in enumerate(sequences)
-        ]
+    if renderer.mode == 'gpu':
+        logger.info("Using GPU rendering for JPEG generation")
+        for i, seq in enumerate(sequences):
+            img = renderer.render_line_image(seq, resolution, line_width)
+            
+            img_filename = f'price_pattern_{i:06d}.jpg'
+            img_path = os.path.join(images_folder, img_filename)
+            
+            figsize = (resolution['width'] / resolution['dpi'], resolution['height'] / resolution['dpi'])
+            fig, ax = plt.subplots(figsize=figsize, dpi=resolution['dpi'])
+            ax.imshow(img, cmap='gray', aspect='auto')
+            ax.axis('off')
+            
+            plt.savefig(
+                img_path, 
+                bbox_inches='tight', 
+                pad_inches=0, 
+                dpi=resolution['dpi'], 
+                facecolor='white', 
+                edgecolor='none', 
+                format='jpeg'
+            )
+            plt.close(fig)
+            
+            if (i + 1) % 1000 == 0:
+                logger.info(f'Processed {i + 1}/{len(sequences)} images')
+    else:
+        max_workers = cpu_count() - 1
         
-        results = []
-        for i in range(0, len(sequences), batch_size):
-            batch = args_list[i:i + batch_size]
-            batch_results = list(executor.map(_process_single_image_jpeg, batch))
-            results.extend(batch_results)
-            logger.info(f'Processed {len(results)}/{len(sequences)} images')
+        with ProcessPoolExecutor(max_workers=max_workers) as executor:
+            args_list = [
+                (i, seq, line_width, resolution, images_folder) 
+                for i, seq in enumerate(sequences)
+            ]
+            
+            results = []
+            for i in range(0, len(sequences), batch_size):
+                batch = args_list[i:i + batch_size]
+                batch_results = list(executor.map(_process_single_image_jpeg, batch))
+                results.extend(batch_results)
+                logger.info(f'Processed {len(results)}/{len(sequences)} images')
     
-    logger.info(f"Created {len(results)} JPEG images in {images_folder}")
+    logger.info(f"Created {len(sequences)} JPEG images in {images_folder}")
     return images_folder
 
 
@@ -222,9 +260,11 @@ def _create_images_storage(
     resolution: Dict[str, int],
     batch_size: int,
     storage_config: Dict,
-    metadata: Dict
+    metadata: Dict,
+    renderer: GPURenderer,
+    rendering_config: Dict
 ) -> str:
-    """Create images in HDF5/NPZ/Zarr format."""
+    """Create images in HDF5/NPZ/Zarr format using specified renderer."""
     writer = ImageStorageWriter(
         output_path=output_path,
         storage_format=storage_config['format'],
@@ -234,26 +274,42 @@ def _create_images_storage(
         metadata=metadata
     )
     
-    max_workers = cpu_count() - 1
-    
-    with ProcessPoolExecutor(max_workers=max_workers) as executor:
-        for start_idx in range(0, len(sequences), batch_size):
-            end_idx = min(start_idx + batch_size, len(sequences))
+    if renderer.mode == 'gpu':
+        logger.info("Using GPU batch rendering for storage")
+        gpu_batch_size = rendering_config.get('gpu_batch_size', 1000)
+        
+        for start_idx in range(0, len(sequences), gpu_batch_size):
+            end_idx = min(start_idx + gpu_batch_size, len(sequences))
             batch_sequences = sequences[start_idx:end_idx]
             
-            args_list = [
-                (i, seq, line_width, resolution) 
-                for i, seq in enumerate(batch_sequences, start=start_idx)
-            ]
+            images = []
+            for seq in batch_sequences:
+                img = renderer.render_line_image(seq, resolution, line_width)
+                images.append(img)
             
-            results = list(executor.map(_process_single_image_array, args_list))
-            results.sort(key=lambda x: x[0])
-            
-            images = [img for _, img in results]
-            seqs = [batch_sequences[i] for i in range(len(batch_sequences))]
-            
-            writer.write_batch(images, seqs)
-            logger.info(f'Processed {end_idx}/{len(sequences)} images')
+            writer.write_batch(images, batch_sequences)
+            logger.info(f'Processed {end_idx}/{len(sequences)} images (GPU)')
+    else:
+        max_workers = cpu_count() - 1
+        
+        with ProcessPoolExecutor(max_workers=max_workers) as executor:
+            for start_idx in range(0, len(sequences), batch_size):
+                end_idx = min(start_idx + batch_size, len(sequences))
+                batch_sequences = sequences[start_idx:end_idx]
+                
+                args_list = [
+                    (i, seq, line_width, resolution) 
+                    for i, seq in enumerate(batch_sequences, start=start_idx)
+                ]
+                
+                results = list(executor.map(_process_single_image_array, args_list))
+                results.sort(key=lambda x: x[0])
+                
+                images = [img for _, img in results]
+                seqs = [batch_sequences[i] for i in range(len(batch_sequences))]
+                
+                writer.write_batch(images, seqs)
+                logger.info(f'Processed {end_idx}/{len(sequences)} images (CPU)')
     
     writer.close()
     logger.info(f"Created {len(sequences)} images in {storage_config['format']} format")

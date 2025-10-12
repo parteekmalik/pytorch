@@ -97,7 +97,8 @@ def run_pipeline(config_path: str = 'config/config.yaml'):
             batch_size=image_config['batch_size'],
             resolution=image_config['resolution'],
             storage_config=image_config['storage'],
-            metadata=metadata
+            metadata=metadata,
+            rendering_config=image_config.get('rendering', {'mode': 'auto', 'gpu_batch_size': 1000, 'fallback_on_error': True})
         )
         
         if storage_format == 'jpeg':

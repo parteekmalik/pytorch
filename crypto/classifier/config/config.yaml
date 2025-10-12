@@ -4,7 +4,7 @@ data:
   symbol: BTCUSDT
   interval: 1m
   start_date: '2020-01'
-  end_date: '2020-03'
+  end_date: '2020-02'
 
 image:
   seq_len: 100
@@ -14,6 +14,10 @@ image:
     width: 800
     height: 500
     dpi: 100
+  rendering:
+    mode: auto
+    gpu_batch_size: 1000
+    fallback_on_error: true
   storage:
     format: hdf5
     mode: single
