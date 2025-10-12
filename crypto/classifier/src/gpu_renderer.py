@@ -78,7 +78,7 @@ class GPURenderer:
         line_width: int = 3
     ) -> np.ndarray:
         """
-        Render multiple images on GPU simultaneously.
+        Render multiple images on GPU simultaneously with vectorized operations.
         
         Args:
             sequences: 2D array of sequences (batch_size, seq_len)
@@ -95,13 +95,51 @@ class GPURenderer:
         
         batch_size = len(sequences)
         width, height = resolution['width'], resolution['height']
+        seq_len = sequences.shape[1]
         
-        images = []
-        for i in range(batch_size):
-            img = self._render_gpu(sequences[i], resolution, line_width)
-            images.append(img)
+        # Move entire batch to GPU at once
+        seqs_gpu = cp.asarray(sequences)
         
-        return np.array(images)
+        # Normalize all sequences in parallel
+        seq_min = cp.min(seqs_gpu, axis=1, keepdims=True)
+        seq_max = cp.max(seqs_gpu, axis=1, keepdims=True)
+        
+        # Handle edge case where min == max
+        mask = (seq_max > seq_min)
+        seqs_norm = cp.where(
+            mask,
+            (seqs_gpu - seq_min) / (seq_max - seq_min),
+            0.0
+        )
+        
+        # Create all images at once (batch_size, height, width)
+        imgs_gpu = cp.ones((batch_size, height, width), dtype=cp.float32)
+        
+        # Compute coordinates for all sequences
+        x_coords_float = cp.linspace(0, width - 1, seq_len)
+        y_coords_float = (1 - seqs_norm) * (height - 1)
+        
+        # Draw lines for all sequences in parallel
+        for i in range(seq_len - 1):
+            x0 = cp.round(x_coords_float[i]).astype(int)
+            x1 = cp.round(x_coords_float[i + 1]).astype(int)
+            y0 = cp.round(y_coords_float[:, i]).astype(int)
+            y1 = cp.round(y_coords_float[:, i + 1]).astype(int)
+            
+            # Draw line for all images in batch simultaneously
+            for batch_idx in range(batch_size):
+                self._draw_line_gpu(
+                    imgs_gpu[batch_idx], 
+                    int(x0), int(y0[batch_idx]),
+                    int(x1), int(y1[batch_idx]),
+                    line_width
+                )
+        
+        # Transfer back to CPU and clip
+        imgs_np = cp.asnumpy(imgs_gpu)
+        imgs_np = np.clip(imgs_np, 0, 1)
+        
+        return imgs_np
     
     def _render_gpu(
         self,

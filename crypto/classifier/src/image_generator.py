@@ -208,31 +208,39 @@ def _create_images_jpeg(
     os.makedirs(images_folder, exist_ok=True)
     
     if renderer.mode == 'gpu':
-        logger.info("Using GPU rendering for JPEG generation")
-        for i, seq in enumerate(sequences):
-            img = renderer.render_line_image(seq, resolution, line_width)
+        logger.info("Using GPU batch rendering for JPEG generation")
+        gpu_batch_size = rendering_config.get('gpu_batch_size', 1000)
+        
+        for start_idx in range(0, len(sequences), gpu_batch_size):
+            end_idx = min(start_idx + gpu_batch_size, len(sequences))
+            batch_sequences = sequences[start_idx:end_idx]
             
-            img_filename = f'price_pattern_{i:06d}.jpg'
-            img_path = os.path.join(images_folder, img_filename)
+            # Render entire batch on GPU in parallel
+            batch_images = renderer.render_batch_gpu(batch_sequences, resolution, line_width)
             
-            figsize = (resolution['width'] / resolution['dpi'], resolution['height'] / resolution['dpi'])
-            fig, ax = plt.subplots(figsize=figsize, dpi=resolution['dpi'])
-            ax.imshow(img, cmap='gray', aspect='auto')
-            ax.axis('off')
+            # Save each image as JPEG
+            for i, img in enumerate(batch_images):
+                img_idx = start_idx + i
+                img_filename = f'price_pattern_{img_idx:06d}.jpg'
+                img_path = os.path.join(images_folder, img_filename)
+                
+                figsize = (resolution['width'] / resolution['dpi'], resolution['height'] / resolution['dpi'])
+                fig, ax = plt.subplots(figsize=figsize, dpi=resolution['dpi'])
+                ax.imshow(img, cmap='gray', aspect='auto')
+                ax.axis('off')
+                
+                plt.savefig(
+                    img_path, 
+                    bbox_inches='tight', 
+                    pad_inches=0, 
+                    dpi=resolution['dpi'], 
+                    facecolor='white', 
+                    edgecolor='none', 
+                    format='jpeg'
+                )
+                plt.close(fig)
             
-            plt.savefig(
-                img_path, 
-                bbox_inches='tight', 
-                pad_inches=0, 
-                dpi=resolution['dpi'], 
-                facecolor='white', 
-                edgecolor='none', 
-                format='jpeg'
-            )
-            plt.close(fig)
-            
-            if (i + 1) % 1000 == 0:
-                logger.info(f'Processed {i + 1}/{len(sequences)} images')
+            logger.info(f'Processed {end_idx}/{len(sequences)} images (GPU)')
     else:
         max_workers = cpu_count() - 1
         
@@ -282,10 +290,8 @@ def _create_images_storage(
             end_idx = min(start_idx + gpu_batch_size, len(sequences))
             batch_sequences = sequences[start_idx:end_idx]
             
-            images = []
-            for seq in batch_sequences:
-                img = renderer.render_line_image(seq, resolution, line_width)
-                images.append(img)
+            # Render entire batch on GPU in parallel (vectorized)
+            images = renderer.render_batch_gpu(batch_sequences, resolution, line_width)
             
             writer.write_batch(images, batch_sequences)
             logger.info(f'Processed {end_idx}/{len(sequences)} images (GPU)')

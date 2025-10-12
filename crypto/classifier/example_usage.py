@@ -64,8 +64,33 @@ images_folder_cpu = create_images_from_data(
 )
 logger.info(f"CPU-rendered images saved to: {images_folder_cpu}")
 
-# Example 3c: Load images from HDF5
-logger.info("\n=== Example 3c: Load Images from HDF5 ===")
+# Example 3c: GPU Batch Rendering (High Performance)
+logger.info("\n=== Example 3c: GPU Batch Rendering ===")
+from src.gpu_renderer import GPURenderer
+import time
+
+renderer = GPURenderer(mode='auto')
+if renderer.gpu_available:
+    logger.info("GPU available - testing batch rendering performance")
+    
+    # Generate test sequences
+    test_sequences = np.random.randn(5000, 100)  # 5000 sequences
+    resolution = {'width': 800, 'height': 500, 'dpi': 100}
+    
+    # Time batch rendering
+    start_time = time.time()
+    batch_images = renderer.render_batch_gpu(test_sequences, resolution, line_width=3)
+    elapsed = time.time() - start_time
+    
+    throughput = len(test_sequences) / elapsed
+    logger.info(f"Rendered {len(test_sequences)} images in {elapsed:.2f}s")
+    logger.info(f"Throughput: {throughput:.1f} images/second")
+    logger.info(f"Batch output shape: {batch_images.shape}")
+else:
+    logger.info("GPU not available - skipping batch rendering test")
+
+# Example 3d: Load images from HDF5
+logger.info("\n=== Example 3d: Load Images from HDF5 ===")
 from src.image_storage import load_images_from_storage, get_storage_info
 
 if os.path.exists('crypto/classifier/data/processed/example_images_gpu.h5'):
