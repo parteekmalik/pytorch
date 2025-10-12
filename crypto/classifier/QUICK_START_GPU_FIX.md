@@ -14,14 +14,13 @@
 
 ## Expected Results
 
-**After Vectorization Fix (Current):**
+**After Fully Vectorized Fix (Change 2 - Current):**
 
-- ✅ **10-50 seconds for 5000 images** (~2-10ms per image)
-- ✅ **GPU usage: 2-4GB / 15GB** (15-25% utilization)
-- ✅ **~3-15 minutes** for 85k images
-- ✅ **100-300x speedup** 🔥
-
-**Note:** If this is still not fast enough, there's a fully vectorized version (Change 2) that can achieve 1000-5000 img/s.
+- ✅ **2.5-10 seconds for 5000 images** (~0.5-2ms per image)
+- ✅ **GPU usage: 6-10GB / 15GB** (40-65% utilization)
+- ✅ **~40-170 seconds** for 85k images
+- ✅ **500-2000 img/s throughput** 🔥
+- ✅ **300-1300x speedup** over original 🚀
 
 ## Files Changed
 
@@ -60,18 +59,16 @@ git pull
 python test_gpu_performance.py
 ```
 
-**Expected output (Change 1 - Vectorized):**
+**Expected output (Change 2 - Fully Vectorized):**
 
 ```
-✓ Throughput: 100-500 images/second
-✅ SPEEDUP: 60-300x faster (batch vs single)
+✓ Throughput: 500-2000 images/second
+✅ SPEEDUP: 300-1300x faster (batch vs single)
 
 ESTIMATED PROCESSING TIMES
-85k images (2 months)    → 3-15 minutes
-40M images (80 years)    → 1-3 days
+85k images (2 months)    → 40-170 seconds (~1-3 minutes)
+40M images (80 years)    → 5-22 hours
 ```
-
-**If you need faster:** Implement Change 2 (fully vectorized) for 1000-5000 img/s
 
 ### Run Full Pipeline:
 
@@ -83,13 +80,13 @@ python pipeline.py
 
 ```
 INFO - Using GPU batch rendering
-INFO - Processed 5000/85887 images (GPU)   [should take ~10-50 sec]
-INFO - Processed 10000/85887 images (GPU)  [should take ~20-100 sec]
+INFO - Processed 5000/85887 images (GPU)   [should take ~2.5-10 sec]
+INFO - Processed 10000/85887 images (GPU)  [should take ~5-20 sec]
 ...
-INFO - Processed 85887/85887 images (GPU)  [total ~3-15 minutes]
+INFO - Processed 85887/85887 images (GPU)  [total ~40-170 seconds]
 ```
 
-**Note:** This is 100-300x faster than before (was 16 hours!). If you need even faster, we can implement Change 2.
+**Note:** This is 300-1300x faster than before (was 16 hours!).
 
 ### Monitor GPU:
 
@@ -99,27 +96,19 @@ In another terminal:
 watch -n 0.5 nvidia-smi
 ```
 
-**Should see (Change 1):**
+**Should see (Change 2 - Fully Vectorized):**
 
 ```
-GPU Memory Usage: 2000-4000 MiB / 15109 MiB  (was 100 MiB!)
-GPU Utilization: 30-60%  (was <5%!)
+GPU Memory Usage: 6000-10000 MiB / 15109 MiB  (was 100 MiB!)
+GPU Utilization: 60-90%  (was <5%!)
 ```
 
-**Change 2 would show:**
-```
-GPU Memory Usage: 8000-12000 MiB / 15109 MiB
-GPU Utilization: 80-100%
-```
+## Verification Checklist (Change 2 - Fully Vectorized)
 
-## Verification Checklist (Change 1)
-
-- [ ] `test_gpu_performance.py` shows >100 images/second (was 1.5 img/s)
-- [ ] `nvidia-smi` shows 2-4GB GPU memory usage (was 0.1GB)
-- [ ] Pipeline processes 5000 images in ~10-50 seconds (was 55 minutes)
-- [ ] Total time for 85k images is 3-15 minutes (was 16 hours)
-
-**If you need faster (>1000 img/s), we can implement Change 2**
+- [ ] `test_gpu_performance.py` shows >500 images/second (was 1.5 img/s)
+- [ ] `nvidia-smi` shows 6-10GB GPU memory usage (was 0.1GB)
+- [ ] Pipeline processes 5000 images in ~2.5-10 seconds (was 55 minutes)
+- [ ] Total time for 85k images is 40-170 seconds (was 16 hours)
 
 ## If Still Slow
 

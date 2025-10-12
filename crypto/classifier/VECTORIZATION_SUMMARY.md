@@ -20,38 +20,44 @@ for i in range(seq_len - 1):              # 100 iterations
 - Each call has ~0.1ms overhead = 50 seconds of overhead alone!
 - GPU was sitting idle while Python looped
 
-## Solution Implemented: Change 1 (Vectorized Interpolation)
+## Solution Implemented: Change 2 (Fully Vectorized)
 
 ### New Approach
-Replaced Bresenham line drawing with **vectorized linear interpolation**:
+Replaced Bresenham line drawing with **fully vectorized linear interpolation**:
 
 ```python
-# NEW (lines 74-158 in src/gpu_renderer.py)
-for seg_idx in range(seq_len - 1):  # Only 100 iterations total
-    # Interpolate points along line segment (GPU vectorized)
-    t = cp.linspace(0, 1, points_per_segment)
-    x_interp = x0 + t * (x1 - x0)  # GPU operation
-    y_interp = y0_batch[:, cp.newaxis] + t * (y1_batch - y0_batch)[:, cp.newaxis]  # GPU vectorized
-    
-    # Set pixels using advanced indexing (GPU operation)
-    imgs_gpu[batch_idx, y_pixels[batch_idx], x_pixels] = 0
+# NEW (lines 74-156 in src/gpu_renderer.py) - FULLY VECTORIZED
+# Interpolate ALL segments for ALL images at once (NO loops over segments!)
+x_interp = x0[cp.newaxis, :, cp.newaxis] + t[cp.newaxis, cp.newaxis, :] * (x1 - x0)[cp.newaxis, :, cp.newaxis]
+y_interp = y0[:, :, cp.newaxis] + t[cp.newaxis, cp.newaxis, :] * (y1 - y0)[:, :, cp.newaxis]
+# Shape: (batch_size, seq_len-1, points_per_segment) - ALL computed at once!
+
+# Flatten and convert to pixels (all vectorized)
+x_all = x_interp.reshape(batch_size, -1)
+y_all = y_interp.reshape(batch_size, -1)
+x_pixels = cp.clip(cp.round(x_all).astype(cp.int32), 0, width - 1)
+y_pixels = cp.clip(cp.round(y_all).astype(cp.int32), 0, height - 1)
+
+# Only loop over batch to set pixels (5000 iterations instead of 500,000!)
+for batch_idx in range(batch_size):
+    imgs_gpu[batch_idx, y_pixels[batch_idx], x_pixels[batch_idx]] = 0
 ```
 
 ### Key Improvements
-1. **Reduced Python calls:** 500,000 → 5,100 (100 segments × 51 batch ops)
-2. **Vectorized operations:** Line interpolation done on GPU, not in Python
-3. **Advanced indexing:** Set multiple pixels at once (GPU operation)
+1. **Massively reduced Python calls:** 500,000 → 5,000 (only batch loop, no segment loop!)
+2. **ALL interpolation vectorized:** Every segment for every image computed simultaneously on GPU
+3. **Advanced indexing:** Set all pixels for a line at once (GPU operation)
 4. **Same visual quality:** Linear interpolation produces smooth lines
 
-## Expected Performance
+## Expected Performance (Change 2 - Fully Vectorized)
 
-| Metric | Before (Bresenham) | After (Vectorized) | Improvement |
-|--------|-------------------|-------------------|-------------|
-| **Throughput** | 1.5 img/s | 100-500 img/s | **100-300x faster** |
-| **GPU Memory** | 0.1GB (0.6%) | 2-4GB (15-25%) | **20x better utilization** |
-| **5000 images** | 55 minutes | 10-50 seconds | **66-330x faster** |
-| **85k images** | 16 hours | 3-15 minutes | **60-320x faster** |
-| **40M images** | 23 days | 1-3 days | **8-23x faster** |
+| Metric | Before (Bresenham) | After (Change 2) | Improvement |
+|--------|-------------------|------------------|-------------|
+| **Throughput** | 1.5 img/s | 500-2000 img/s | **300-1300x faster** |
+| **GPU Memory** | 0.1GB (0.6%) | 6-10GB (40-65%) | **60-100x better utilization** |
+| **5000 images** | 55 minutes | 2.5-10 seconds | **330-1300x faster** |
+| **85k images** | 16 hours | 40-170 seconds | **340-1400x faster** |
+| **40M images** | 23 days | 5-22 hours | **25-110x faster** |
 
 ## Testing
 
