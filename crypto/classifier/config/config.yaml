@@ -16,7 +16,7 @@ image:
     dpi: 100
   rendering:
     mode: auto
-    gpu_batch_size: 5000
+    gpu_batch_size: 1000
     fallback_on_error: true
   storage:
     format: hdf5
