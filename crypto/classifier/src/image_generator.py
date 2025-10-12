@@ -60,8 +60,9 @@ def sequence_to_image(
     ax.plot(normalized_seq, linewidth=line_width, color='black', antialiased=True)
     
     fig.canvas.draw()
-    img_array = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
-    img_array = img_array.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+    img_array = np.frombuffer(fig.canvas.buffer_rgba(), dtype=np.uint8)
+    img_array = img_array.reshape(fig.canvas.get_width_height()[::-1] + (4,))
+    img_array = img_array[:, :, :3]
     
     img_gray = np.mean(img_array, axis=2)
     img_normalized = img_gray.astype(np.float32) / 255.0
