@@ -20,6 +20,12 @@ from .model_utils import (
     calculate_prediction_metrics
 )
 
+from .loss_functions import (
+    get_available_loss_functions,
+    describe_loss_function,
+    get_loss_function
+)
+
 from .binance_data_organizer import (
     BinanceDataOrganizer
 )
@@ -58,6 +64,11 @@ __all__ = [
     'predict_next_candle',
     'add_open_to_predictions',
     'calculate_prediction_metrics',
+    
+    # Loss function utilities
+    'get_available_loss_functions',
+    'describe_loss_function',
+    'get_loss_function',
     
     # Binance Data Organizer (includes normalization utilities)
     'BinanceDataOrganizer',

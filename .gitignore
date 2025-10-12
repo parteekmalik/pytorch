@@ -57,3 +57,4 @@ Thumbs.db
 *.csv
 *.parquet
 *.feather
+images/

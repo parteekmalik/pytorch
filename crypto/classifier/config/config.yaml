@@ -1,0 +1,32 @@
+# Crypto Classifier Pipeline Configuration
+
+data:
+  symbol: BTCUSDT
+  interval: 1m
+  start_date: '2020-01'
+  end_date: '2020-03'
+
+image:
+  seq_len: 100
+  line_width: 3
+  batch_size: 10000
+  resolution:
+    width: 800
+    height: 500
+    dpi: 100
+  storage:
+    format: hdf5
+    mode: single
+    images_per_file: 50000
+
+paths:
+  raw_data: crypto/classifier/data/raw
+  processed_data: crypto/classifier/data/processed
+  models: crypto/classifier/models
+  logs: crypto/classifier/logs
+
+pipeline:
+  skip_existing_images: true
+  num_workers: -1  # -1 means cpu_count() - 1
+
+
