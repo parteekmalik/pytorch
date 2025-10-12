@@ -125,22 +125,26 @@ class GPURenderer:
         y1 = y_coords[:, 1:]
         
         # Interpolate all points for all segments for all images at once
-        # Result shape: (batch_size, seq_len-1, points_per_segment)
-        x_interp = x0[cp.newaxis, :, cp.newaxis] + t[cp.newaxis, cp.newaxis, :] * (x1 - x0)[cp.newaxis, :, cp.newaxis]
+        # x coordinates are same for all images: (seq_len-1, points_per_segment)
+        x_interp = x0[:, cp.newaxis] + t[cp.newaxis, :] * (x1 - x0)[:, cp.newaxis]
+        # y coordinates vary per image: (batch_size, seq_len-1, points_per_segment)
         y_interp = y0[:, :, cp.newaxis] + t[cp.newaxis, cp.newaxis, :] * (y1 - y0)[:, :, cp.newaxis]
         
-        # Flatten to get all points: (batch_size, total_points)
-        x_all = x_interp.reshape(batch_size, -1)
+        # Flatten x coordinates and broadcast to all images: (total_points,)
+        x_all_1d = x_interp.flatten()
+        # Flatten y coordinates: (batch_size, total_points)
         y_all = y_interp.reshape(batch_size, -1)
         
         # Convert to pixels
-        x_pixels = cp.clip(cp.round(x_all).astype(cp.int32), 0, width - 1)
+        # x coordinates are the same for all images (1D array)
+        x_pixels = cp.clip(cp.round(x_all_1d).astype(cp.int32), 0, width - 1)
+        # y coordinates vary per image (2D array: batch_size x total_points)
         y_pixels = cp.clip(cp.round(y_all).astype(cp.int32), 0, height - 1)
         
         # Set all pixels for all images (vectorized as much as possible)
         for batch_idx in range(batch_size):
-            # Draw main line
-            imgs_gpu[batch_idx, y_pixels[batch_idx], x_pixels[batch_idx]] = 0
+            # Draw main line (x_pixels is 1D, same for all images)
+            imgs_gpu[batch_idx, y_pixels[batch_idx], x_pixels] = 0
             
             # Apply thickness if needed
             if line_width > 1:
@@ -148,8 +152,8 @@ class GPURenderer:
                 for dy in range(1, half_width + 1):
                     y_up = cp.clip(y_pixels[batch_idx] + dy, 0, height - 1)
                     y_down = cp.clip(y_pixels[batch_idx] - dy, 0, height - 1)
-                    imgs_gpu[batch_idx, y_up, x_pixels[batch_idx]] = 0
-                    imgs_gpu[batch_idx, y_down, x_pixels[batch_idx]] = 0
+                    imgs_gpu[batch_idx, y_up, x_pixels] = 0
+                    imgs_gpu[batch_idx, y_down, x_pixels] = 0
         
         # Transfer back to CPU
         imgs_np = cp.asnumpy(imgs_gpu)
