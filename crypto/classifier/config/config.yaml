@@ -24,10 +24,10 @@ image:
     images_per_file: 50000
 
 paths:
-  raw_data: ../data/raw
-  processed_data: ../data/processed
-  models: ../models
-  logs: ../logs
+  raw_data: data/raw
+  processed_data: data/processed
+  models: models
+  logs: logs
 
 pipeline:
   skip_existing_images: true
