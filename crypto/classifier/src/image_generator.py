@@ -38,10 +38,7 @@ def sequence_to_image(
     
     xp = get_array_module()
     
-    if GPU_AVAILABLE and not isinstance(sequence, np.ndarray):
-        seq_gpu = sequence
-    else:
-        seq_gpu = xp.asarray(sequence)
+    seq_gpu = xp.asarray(sequence)
     
     seq_min = xp.min(seq_gpu)
     seq_max = xp.max(seq_gpu)
@@ -51,7 +48,7 @@ def sequence_to_image(
     else:
         normalized_seq = xp.zeros_like(seq_gpu)
     
-    if GPU_AVAILABLE:
+    if hasattr(xp, 'asnumpy'):
         normalized_seq = xp.asnumpy(normalized_seq)
     
     figsize = (resolution['width'] / resolution['dpi'], resolution['height'] / resolution['dpi'])
