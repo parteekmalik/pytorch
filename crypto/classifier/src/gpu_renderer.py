@@ -1,5 +1,5 @@
 """
-GPU-accelerated image rendering with automatic matplotlib fallback.
+GPU-accelerated image rendering (GPU required).
 Provides 50-100x speedup for large-scale image generation (40M+ images).
 """
 import numpy as np
@@ -11,30 +11,14 @@ logger = setup_logger(__name__)
 
 class GPURenderer:
     """
-    Dual-mode renderer: GPU-accelerated or matplotlib fallback.
-    Automatically detects GPU availability and falls back gracefully.
+    GPU-accelerated image renderer (GPU required).
     """
     
-    def __init__(self, mode: str = 'auto'):
-        """
-        Initialize renderer with mode detection.
-        
-        Args:
-            mode: 'auto', 'gpu', or 'cpu'
-        """
-        self.requested_mode = mode
-        self.gpu_available = self._check_gpu()
-        
-        if mode == 'auto':
-            self.mode = 'gpu' if self.gpu_available else 'cpu'
-        elif mode == 'gpu':
-            if not self.gpu_available:
-                raise RuntimeError("GPU mode requested but GPU not available")
-            self.mode = 'gpu'
-        else:
-            self.mode = 'cpu'
-        
-        logger.info(f"GPU Renderer initialized: mode={self.mode}, gpu_available={self.gpu_available}")
+    def __init__(self):
+        """Initialize GPU renderer."""
+        if not self._check_gpu():
+            raise RuntimeError("GPU (CuPy) is required but not available")
+        logger.info("GPU Renderer initialized")
     
     def _check_gpu(self) -> bool:
         """Check if GPU is available via CuPy."""
@@ -52,7 +36,7 @@ class GPURenderer:
         line_width: int = 3
     ) -> np.ndarray:
         """
-        Render a line plot image from a sequence.
+        Render a line plot image from a sequence using GPU.
         
         Args:
             sequence: 1D array of price values
@@ -62,14 +46,7 @@ class GPURenderer:
         Returns:
             2D grayscale image array (normalized to [0, 1])
         """
-        if self.mode == 'gpu':
-            try:
-                return self._render_gpu(sequence, resolution, line_width)
-            except Exception as e:
-                logger.warning(f"GPU render failed: {e}, falling back to matplotlib")
-                return self._render_matplotlib(sequence, resolution, line_width)
-        else:
-            return self._render_matplotlib(sequence, resolution, line_width)
+        return self._render_gpu(sequence, resolution, line_width)
     
     def render_batch_gpu(
         self,
@@ -249,44 +226,4 @@ class GPURenderer:
                     if 0 <= ny < height and 0 <= nx < width:
                         img[ny, nx] = 0.0
     
-    def _render_matplotlib(
-        self,
-        sequence: np.ndarray,
-        resolution: Dict[str, int],
-        line_width: int
-    ) -> np.ndarray:
-        """
-        Matplotlib rendering (fallback mode).
-        Same as existing implementation.
-        """
-        import matplotlib.pyplot as plt
-        
-        seq_min, seq_max = sequence.min(), sequence.max()
-        
-        if seq_max > seq_min:
-            normalized_seq = (sequence - seq_min) / (seq_max - seq_min)
-        else:
-            normalized_seq = np.zeros_like(sequence)
-        
-        figsize = (
-            resolution['width'] / resolution['dpi'],
-            resolution['height'] / resolution['dpi']
-        )
-        fig, ax = plt.subplots(figsize=figsize, dpi=resolution['dpi'])
-        ax.set_xlim(0, len(normalized_seq))
-        ax.set_ylim(0, 1)
-        ax.axis('off')
-        
-        ax.plot(normalized_seq, linewidth=line_width, color='black', antialiased=True)
-        
-        fig.canvas.draw()
-        img_array = np.frombuffer(fig.canvas.buffer_rgba(), dtype=np.uint8)
-        img_array = img_array.reshape(fig.canvas.get_width_height()[::-1] + (4,))
-        img_array = img_array[:, :, :3]
-        
-        img_gray = np.mean(img_array, axis=2)
-        img_normalized = img_gray.astype(np.float32) / 255.0
-        
-        plt.close(fig)
-        return img_normalized
 

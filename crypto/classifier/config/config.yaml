@@ -5,6 +5,7 @@ data:
   interval: 1m
   start_date: '2020-01'
   end_date: '2020-02'
+  columns: 'C'  # Options: C, O, H, L, V, Q, N, B, R, T, E, OHLC, OHLCV, etc.
 
 image:
   seq_len: 100
@@ -15,13 +16,8 @@ image:
     height: 500
     dpi: 100
   rendering:
-    mode: auto
+    mode: gpu
     gpu_batch_size: 2000
-    fallback_on_error: true
-  storage:
-    format: hdf5
-    mode: single
-    images_per_file: 50000
 
 paths:
   raw_data: data/raw

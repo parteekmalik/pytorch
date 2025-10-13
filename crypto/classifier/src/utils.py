@@ -5,19 +5,9 @@ import logging
 import os
 from pathlib import Path
 from typing import Tuple
-import matplotlib
 import warnings
 
 warnings.filterwarnings('ignore')
-
-# Matplotlib configuration
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
-
-plt.rcParams['figure.max_open_warning'] = 0
-plt.rcParams['figure.autolayout'] = True
-plt.rcParams['savefig.dpi'] = 100
-plt.rcParams['savefig.bbox'] = 'tight'
 
 
 def check_gpu_availability() -> Tuple[bool, str]:

@@ -116,7 +116,8 @@ def download_crypto_data(
     interval: str,
     start_date_str: str,
     end_date_str: str,
-    cache_dir: str
+    cache_dir: str,
+    columns: str = 'Close'
 ) -> pd.DataFrame:
     """
     Download cryptocurrency data from Binance for a date range.
@@ -127,12 +128,20 @@ def download_crypto_data(
         start_date_str: Start date in 'YYYY-MM' format
         end_date_str: End date in 'YYYY-MM' format
         cache_dir: Directory to cache downloaded files
+        columns: Which columns to return using character notation (default: 'C'):
+                Price: O(Open), H(High), L(Low), C(Close)
+                Volume: V(Volume), Q(Quote volume)
+                Trading: N(Number of trades), B(Taker buy base vol), R(Taker buy quote vol)
+                Time: T(Open time), E(Close time)
+                Common: OHLC (prices), OHLCV (prices+volume)
+                Any combination: 'OC', 'HLV', 'OHLCVN', etc.
+                Case-insensitive, separators (spaces/commas) ignored
         
     Returns:
-        DataFrame with OHLC data
+        DataFrame with selected price columns
         
     Raises:
-        ValueError: If no data could be downloaded
+        ValueError: If no data could be downloaded or invalid columns specified
     """
     logger.info(f"Downloading {symbol} data from {start_date_str} to {end_date_str}")
     
@@ -161,11 +170,58 @@ def download_crypto_data(
         
         combined_df = pd.concat(all_data, ignore_index=True)
         
-        essential_cols = ['Open', 'High', 'Low', 'Close']
-        combined_df = combined_df[essential_cols]
-        
-        logger.info(f"Downloaded {len(combined_df)} data points")
-        return combined_df
+        # Handle column selection using character notation
+        char_to_col = {
+            # Price columns
+            'O': 'Open',
+            'H': 'High',
+            'L': 'Low',
+            'C': 'Close',
+            # Volume columns
+            'V': 'Volume',
+            'Q': 'Quote asset volume',
+            'N': 'Number of trades',
+            'B': 'Taker buy base asset volume',
+            'R': 'Taker buy quote asset volume',
+            # Time columns
+            'T': 'Open time',
+            'E': 'Close time'
+        }
+
+        # Parse the columns string
+        selected_cols = []
+        for char in columns.upper():
+            if char in char_to_col:
+                col_name = char_to_col[char]
+                if col_name not in selected_cols:  # Avoid duplicates
+                    selected_cols.append(col_name)
+            elif char not in [' ', ',', '-', '_']:  # Ignore separators
+                raise ValueError(
+                    f"Invalid column character '{char}'. "
+                    f"Valid: O(Open), H(High), L(Low), C(Close), V(Volume), "
+                    f"Q(Quote volume), N(Trades), B(Buy base vol), R(Buy quote vol), "
+                    f"T(Open time), E(Close time)"
+                )
+
+        if not selected_cols:
+            raise ValueError("No valid columns specified. Use: C, OHLC, OHLCV, etc.")
+
+        # Maintain standard column order
+        standard_order = [
+            'Open time', 'Open', 'High', 'Low', 'Close', 'Volume',
+            'Close time', 'Quote asset volume', 'Number of trades',
+            'Taker buy base asset volume', 'Taker buy quote asset volume'
+        ]
+        selected_cols = [col for col in standard_order if col in selected_cols]
+
+        # Select the requested columns
+        if len(selected_cols) == 1:
+            result = combined_df[selected_cols[0]]
+        else:
+            result = combined_df[selected_cols]
+
+        logger.info(f"Downloaded {len(result)} data points with columns: {selected_cols}")
+        return result
         
     except Exception as e:
         raise ValueError(f"Download failed: {e}")

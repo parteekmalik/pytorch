@@ -21,9 +21,14 @@ def load_config(config_path: str = 'config/config.yaml') -> dict:
 def run_pipeline(config_path: str = 'config/config.yaml'):
     config = load_config(config_path)
     
+    # Get absolute path to classifier directory (where pipeline.py lives)
+    base_dir = Path(__file__).parent
+    
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    log_file = os.path.join(config['paths']['logs'], f'pipeline_{timestamp}.log')
-    logger = setup_logger('pipeline', log_file=log_file)
+    
+    # Resolve log path relative to base_dir
+    log_path = base_dir / config['paths']['logs'] / f'pipeline_{timestamp}.log'
+    logger = setup_logger('pipeline', log_file=str(log_path))
     
     logger.info("="*60)
     logger.info("Starting Crypto Classifier Pipeline")
@@ -32,21 +37,27 @@ def run_pipeline(config_path: str = 'config/config.yaml'):
     gpu_available, backend = check_gpu_availability()
     logger.info(f"Compute Backend: {backend}")
     
+    # Ensure all directories exist, resolved relative to base_dir
     for path_name, path_value in config['paths'].items():
-        ensure_dir(path_value)
-        logger.info(f"Ensured directory: {path_value}")
+        abs_path = base_dir / path_value
+        ensure_dir(str(abs_path))
+        logger.info(f"Ensured directory: {abs_path}")
     
     data_config = config['data']
     logger.info(f"Data Config: {data_config}")
     
     try:
         logger.info("Step 1: Downloading cryptocurrency data...")
+        
+        # Resolve cache_dir for data download
+        cache_dir = base_dir / config['paths']['raw_data']
         data = download_crypto_data(
             symbol=data_config['symbol'],
             interval=data_config['interval'],
             start_date_str=data_config['start_date'],
             end_date_str=data_config['end_date'],
-            cache_dir=config['paths']['raw_data']
+            cache_dir=str(cache_dir),
+            columns=data_config.get('columns', 'Close')
         )
         logger.info(f"Downloaded {len(data)} data points")
         
@@ -58,14 +69,9 @@ def run_pipeline(config_path: str = 'config/config.yaml'):
             f"{data_config['start_date']}_{data_config['end_date']}"
         )
         
-        storage_format = image_config['storage']['format'].lower()
-        
-        if storage_format == 'jpeg':
-            output_path = os.path.join(config['paths']['processed_data'], base_name)
-        else:
-            ext_map = {'hdf5': '.h5', 'zarr': '.zarr', 'npz': '.npz'}
-            ext = ext_map.get(storage_format, '.h5')
-            output_path = os.path.join(config['paths']['processed_data'], base_name + ext)
+        # Always use HDF5 format
+        processed_dir = base_dir / config['paths']['processed_data']
+        output_path = processed_dir / (base_name + '.h5')
         
         metadata = {
             'symbol': data_config['symbol'],
@@ -76,30 +82,23 @@ def run_pipeline(config_path: str = 'config/config.yaml'):
         
         images_path = create_images_from_data(
             data=data,
-            output_path=output_path,
+            output_path=str(output_path),
             seq_len=image_config['seq_len'],
             line_width=image_config['line_width'],
             batch_size=image_config['batch_size'],
             resolution=image_config['resolution'],
-            storage_config=image_config['storage'],
+            storage_config={'format': 'hdf5', 'mode': 'single'},
             metadata=metadata,
             rendering_config=image_config.get('rendering', {'mode': 'auto', 'gpu_batch_size': 1000, 'fallback_on_error': True})
         )
         
-        if storage_format == 'jpeg':
-            image_count = len([f for f in os.listdir(images_path) if f.endswith('.jpg')])
-            logger.info(f"Created {image_count} JPEG images in {images_path}")
-        else:
-            from src.image_storage import get_storage_info
-            if image_config['storage']['mode'] == 'single':
-                info = get_storage_info(images_path, storage_format)
-                image_count = info['num_images']
-                file_size_mb = info.get('file_size_mb', 0)
-                logger.info(f"Created {image_count} images in {storage_format.upper()} format")
-                logger.info(f"File size: {file_size_mb:.2f} MB")
-            else:
-                logger.info(f"Created images in batch {storage_format.upper()} format")
-                image_count = len(data) - image_config['seq_len'] + 1
+        # Get HDF5 file info
+        from src.image_storage import get_storage_info
+        info = get_storage_info(images_path, 'hdf5')
+        image_count = info['num_images']
+        file_size_mb = info.get('file_size_mb', 0)
+        logger.info(f"Created {image_count} images in HDF5 format")
+        logger.info(f"File size: {file_size_mb:.2f} MB")
         
         logger.info("="*60)
         logger.info("Pipeline completed successfully!")
@@ -108,7 +107,7 @@ def run_pipeline(config_path: str = 'config/config.yaml'):
         logger.info(f"  - Data points: {len(data)}")
         logger.info(f"  - Images: {image_count}")
         logger.info(f"  - Output: {images_path}")
-        logger.info(f"  - Log: {log_file}")
+        logger.info(f"  - Log: {log_path}")
         
     except Exception as e:
         logger.error(f"Pipeline failed: {e}", exc_info=True)
