@@ -73,47 +73,36 @@ class Renderer:
         
         logger.info(f"Rendering {batch_size} images using Datashader")
         
+        # Move ALL sequences to GPU and normalize at once
+        if not hasattr(sequences, 'get'):
+            import cupy as cp
+            sequences_gpu = cp.asarray(sequences)
+        else:
+            sequences_gpu = sequences
+
+        # Normalize ALL sequences on GPU in parallel
+        seq_min = sequences_gpu.min(axis=1, keepdims=True)
+        seq_max = sequences_gpu.max(axis=1, keepdims=True) 
+        mask = (seq_max > seq_min)
+        seqs_norm = cp.where(mask, (sequences_gpu - seq_min) / (seq_max - seq_min), 0.5)
+
+        # Convert back to CPU for Datashader (all at once)
+        seqs_cpu = seqs_norm.get()
+
+        # Now render with Datashader
         images = []
-        
         for batch_idx in range(batch_size):
-            seq = sequences[batch_idx]
-            
-            # Convert CuPy array to CPU if needed
-            if hasattr(seq, 'get'):
-                seq_cpu = seq.get()
-            else:
-                seq_cpu = seq
-            
-            # Create DataFrame for Datashader
             df = pd.DataFrame({
                 'x': np.arange(seq_len),
-                'y': seq_cpu
+                'y': seqs_cpu[batch_idx]  # Already normalized
             })
             
-            # Normalize y values to [0, 1] range
-            y_min, y_max = df['y'].min(), df['y'].max()
-            if y_max > y_min:
-                df['y'] = (df['y'] - y_min) / (y_max - y_min)
-            else:
-                df['y'] = 0.5  # Flat line if no variation
-            
-            # Create Datashader canvas
             canvas = ds.Canvas(plot_width=width, plot_height=height)
-            
-            # Render line (GPU-accelerated aggregation)
             agg = canvas.line(df, 'x', 'y', agg=ds.count())
-            
-            # Convert to grayscale image
             img = shade(agg, cmap=['white', 'black'])
             img = set_background(img, 'white')
-            
-            # Convert to numpy array and normalize to [0, 1]
-            img_array = img.to_numpy() / 255.0  # Already grayscale, no need for channel indexing
-            
-            # Invert colors: Datashader uses black lines on white background
-            # We want white background (1.0) with black lines (0.0)
-            img_array = 1.0 - img_array  # Invert so lines are black (0.0)
-            
+            img_array = img.to_numpy() / 255.0
+            img_array = 1.0 - img_array
             images.append(img_array)
             
             if batch_idx % 100 == 0:
