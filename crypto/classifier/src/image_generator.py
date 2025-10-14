@@ -140,7 +140,7 @@ def _create_images_storage(
         output_path=output_path,
         storage_format=storage_config['format'],
         mode=storage_config['mode'],
-        images_per_file=storage_config['images_per_file'],
+        images_per_file=storage_config.get('images_per_file', 50000),
         resolution=resolution,
         metadata=metadata
     )

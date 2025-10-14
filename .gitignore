@@ -60,3 +60,4 @@ Thumbs.db
 processed/*
 raw/*
 logs/*
+*.zip
