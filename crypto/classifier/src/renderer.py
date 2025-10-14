@@ -69,7 +69,7 @@ class Renderer:
         batch_size, seq_len = sequences.shape
         width, height = resolution['width'], resolution['height']
         
-        logger.info(f"Rendering {batch_size} images using CuPy GPU kernels")
+        # logger.info(f"Rendering {batch_size} images using CuPy GPU kernels")
         
         # Move to GPU and normalize
         if not hasattr(sequences, 'get'):
@@ -139,5 +139,5 @@ class Renderer:
         
         # Transfer back to CPU
         result = images_gpu.get()
-        logger.info(f"Completed rendering {batch_size} images")
+        # logger.info(f"Completed rendering {batch_size} images")
         return result

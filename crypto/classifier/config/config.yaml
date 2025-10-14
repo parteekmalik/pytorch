@@ -14,7 +14,7 @@ image:
     height: 500
   rendering:
     mode: gpu
-    gpu_batch_size: 8000
+    gpu_batch_size: 1000
 
 paths:
   raw_data: data/raw
