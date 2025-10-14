@@ -71,48 +71,55 @@ class Renderer:
         
         # logger.info(f"Rendering {batch_size} images using CuPy GPU kernels")
         
-        # Move to GPU and normalize
+        # Convert prices to integers (preserve 2 decimal places)
+        DECIMAL_SCALE = 100
         if not hasattr(sequences, 'get'):
             import cupy as cp
             sequences_gpu = cp.asarray(sequences)
         else:
             sequences_gpu = sequences
-        
-        # Normalize on GPU
-        seq_min = sequences_gpu.min(axis=1, keepdims=True)
-        seq_max = sequences_gpu.max(axis=1, keepdims=True)
-        mask = (seq_max > seq_min)
-        seqs_norm = cp.where(mask, (sequences_gpu - seq_min) / (seq_max - seq_min), 0.5)
+
+        # Multiply by 100 to convert decimals to integers
+        # Example: $50,123.45 -> 5,012,345
+        sequences_int = (sequences_gpu * DECIMAL_SCALE).astype(cp.int32)
+
+        # Integer min/max
+        seq_min = sequences_int.min(axis=1, keepdims=True)
+        seq_max = sequences_int.max(axis=1, keepdims=True)
+        range_vals = seq_max - seq_min
+
+        # Avoid division by zero
+        range_vals = cp.where(range_vals == 0, 1, range_vals)
+
+        # Direct integer scaling to pixel coordinates (NO FLOAT OPERATIONS!)
+        y_coords_int = ((sequences_int - seq_min) * (height - 1)) // range_vals
+        y_coords = cp.clip(y_coords_int, 0, height - 1)
         
         # Create output images on GPU (white background = 1.0)
         images_gpu = cp.ones((batch_size, height, width), dtype=cp.float32)
         
-        # Compute line coordinates for ALL batches at once (vectorized)
-        x_coords = cp.linspace(0, width - 1, seq_len, dtype=cp.float32)
+        # Compute line coordinates as integers
+        x_coords = cp.linspace(0, width - 1, seq_len, dtype=cp.int32)
         x_coords = cp.broadcast_to(x_coords, (batch_size, seq_len))
-        y_coords = (1 - seqs_norm) * (height - 1)  # Shape: (batch_size, seq_len)
 
-        # Pre-compute all line segments for all images
-        x0 = x_coords[:, :-1]  # Shape: (batch_size, seq_len-1)
+        # Pre-compute all line segments as integers
+        x0 = x_coords[:, :-1]
         x1 = x_coords[:, 1:]
         y0 = y_coords[:, :-1]
         y1 = y_coords[:, 1:]
 
-        # Compute max steps needed for all segments
+        # Integer interpolation (NO FLOATS!)
         dx = cp.abs(x1 - x0)
         dy = cp.abs(y1 - y0)
-        max_steps = int(cp.ceil(cp.max(cp.maximum(dx, dy)) * 2))
+        max_steps = min(int(cp.max(cp.maximum(dx, dy)) * 2), 200)
 
-        # Interpolate all line segments at once
-        t = cp.linspace(0, 1, max_steps).reshape(1, 1, -1)  # Shape: (1, 1, max_steps)
-        xs_all = x0[:, :, None] + t * (x1 - x0)[:, :, None]  # Shape: (batch_size, seq_len-1, max_steps)
-        ys_all = y0[:, :, None] + t * (y1 - y0)[:, :, None]
+        # Pure integer interpolation
+        t_steps = cp.arange(max_steps, dtype=cp.int32)
+        # Integer division for interpolation: x0 + (t * (x1 - x0)) // max_steps
+        xs_all = x0[:, :, None] + (t_steps * (x1 - x0)[:, :, None]) // max_steps
+        ys_all = y0[:, :, None] + (t_steps * (y1 - y0)[:, :, None]) // max_steps
 
-        # Round and convert to integers
-        xs_all = cp.round(xs_all).astype(cp.int32)
-        ys_all = cp.round(ys_all).astype(cp.int32)
-
-        # Clip to image bounds
+        # Clip to bounds (already int32)
         xs_all = cp.clip(xs_all, 0, width - 1)
         ys_all = cp.clip(ys_all, 0, height - 1)
 
