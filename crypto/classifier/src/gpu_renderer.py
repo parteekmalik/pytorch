@@ -18,6 +18,7 @@ class GPURenderer:
         """Initialize GPU renderer."""
         if not self._check_gpu():
             raise RuntimeError("GPU (CuPy) is required but not available")
+        self.gpu_available = True
         logger.info("GPU Renderer initialized")
     
     def _check_gpu(self) -> bool:

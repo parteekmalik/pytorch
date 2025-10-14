@@ -5,7 +5,6 @@ data:
   interval: 1m
   start_date: '2020-01'
   end_date: '2020-02'
-  columns: 'C'  # Options: C, O, H, L, V, Q, N, B, R, T, E, OHLC, OHLCV, etc.
 
 image:
   seq_len: 100

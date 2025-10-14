@@ -56,8 +56,7 @@ def run_pipeline(config_path: str = 'config/config.yaml'):
             interval=data_config['interval'],
             start_date_str=data_config['start_date'],
             end_date_str=data_config['end_date'],
-            cache_dir=str(cache_dir),
-            columns=data_config.get('columns', 'Close')
+            cache_dir=str(cache_dir)
         )
         logger.info(f"Downloaded {len(data)} data points")
         
