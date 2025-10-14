@@ -1,29 +1,28 @@
 """
-Datashader-based GPU-accelerated image rendering for cryptocurrency price data.
-Uses Datashader for efficient GPU-accelerated line chart rendering.
+OpenCV CUDA-based GPU-accelerated image rendering for cryptocurrency price data.
+Uses OpenCV CUDA for true GPU-accelerated line chart rendering.
 """
 import numpy as np
 import pandas as pd
 import cupy as cp
 from typing import Dict, Optional
-import datashader as ds
-from datashader.transfer_functions import shade, set_background
+import cv2
 from .utils import setup_logger, check_gpu_availability
 
 logger = setup_logger(__name__)
 
 GPU_AVAILABLE, GPU_BACKEND = check_gpu_availability()
-logger.info(f"Datashader renderer initialized with: {GPU_BACKEND}")
+logger.info(f"OpenCV CUDA renderer initialized with: {GPU_BACKEND}")
 
 
 class Renderer:
     """
-    GPU-accelerated image renderer using Datashader.
-    Much faster than custom GPU implementation for line chart rendering.
+    GPU-accelerated image renderer using OpenCV CUDA.
+    True GPU rendering for line chart generation with better VRAM utilization.
     """
     
     def __init__(self):
-        """Initialize Datashader renderer."""
+        """Initialize OpenCV CUDA renderer."""
         if not GPU_AVAILABLE:
             raise RuntimeError("GPU (CuPy) is required but not available")
         self.gpu_available = True
@@ -36,12 +35,12 @@ class Renderer:
         line_width: int = 3
     ) -> np.ndarray:
         """
-        Render a line plot image from a sequence using Datashader.
+        Render a line plot image from a sequence using OpenCV CUDA.
         
         Args:
             sequence: 1D array of price values
             resolution: Dict with 'width', 'height'
-            line_width: Width of the line (not used in Datashader, kept for compatibility)
+            line_width: Width of the line
             
         Returns:
             2D grayscale image array (normalized to [0, 1])
@@ -55,12 +54,12 @@ class Renderer:
         line_width: int = 3
     ) -> np.ndarray:
         """
-        Ultra-fast GPU-accelerated rendering using Datashader.
+        True GPU-accelerated rendering using OpenCV CUDA.
         
         Args:
             sequences: 2D array of sequences (batch_size, seq_len)
             resolution: Dict with 'width', 'height'
-            line_width: Width of the line (not used in Datashader, kept for compatibility)
+            line_width: Width of the line
             
         Returns:
             3D array of images (batch_size, height, width)
@@ -71,38 +70,44 @@ class Renderer:
         batch_size, seq_len = sequences.shape
         width, height = resolution['width'], resolution['height']
         
-        logger.info(f"Rendering {batch_size} images using Datashader")
+        logger.info(f"Rendering {batch_size} images using OpenCV CUDA")
         
-        # Move ALL sequences to GPU and normalize at once
+        # Move sequences to GPU and normalize
         if not hasattr(sequences, 'get'):
             import cupy as cp
             sequences_gpu = cp.asarray(sequences)
         else:
             sequences_gpu = sequences
-
+        
         # Normalize ALL sequences on GPU in parallel
         seq_min = sequences_gpu.min(axis=1, keepdims=True)
-        seq_max = sequences_gpu.max(axis=1, keepdims=True) 
+        seq_max = sequences_gpu.max(axis=1, keepdims=True)
         mask = (seq_max > seq_min)
         seqs_norm = cp.where(mask, (sequences_gpu - seq_min) / (seq_max - seq_min), 0.5)
-
-        # Convert back to CPU for Datashader (all at once)
         seqs_cpu = seqs_norm.get()
-
-        # Now render with Datashader
+        
         images = []
+        
         for batch_idx in range(batch_size):
-            df = pd.DataFrame({
-                'x': np.arange(seq_len),
-                'y': seqs_cpu[batch_idx]  # Already normalized
-            })
+            # Create white background on GPU
+            gpu_img = cv2.cuda_GpuMat(height, width, cv2.CV_8UC1)
+            gpu_img.setTo(255)  # White background
             
-            canvas = ds.Canvas(plot_width=width, plot_height=height)
-            agg = canvas.line(df, 'x', 'y', agg=ds.count())
-            img = shade(agg, cmap=['white', 'black'])
-            img = set_background(img, 'white')
-            img_array = img.to_numpy() / 255.0
-            img_array = 1.0 - img_array
+            # Prepare line coordinates
+            seq = seqs_cpu[batch_idx]
+            x_coords = np.linspace(0, width - 1, seq_len)
+            y_coords = (1 - seq) * (height - 1)
+            
+            # Draw line segments on GPU
+            points = np.column_stack([x_coords, y_coords]).astype(np.int32)
+            for i in range(len(points) - 1):
+                pt1 = tuple(points[i])
+                pt2 = tuple(points[i + 1])
+                cv2.cuda.line(gpu_img, pt1, pt2, 0, line_width)
+            
+            # Download from GPU to CPU
+            img_cpu = gpu_img.download()
+            img_array = img_cpu.astype(np.float32) / 255.0
             images.append(img_array)
             
             if batch_idx % 100 == 0:
