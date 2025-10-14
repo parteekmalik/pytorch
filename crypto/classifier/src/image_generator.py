@@ -87,7 +87,7 @@ def _create_images_jpeg(
     line_width: int,
     resolution: Dict[str, int],
     batch_size: int,
-    renderer: GPURenderer
+    renderer: Renderer
 ) -> str:
     """Create images as individual JPEG files using specified renderer."""
     if os.path.exists(images_folder) and os.listdir(images_folder):
@@ -132,7 +132,7 @@ def _create_images_storage(
     batch_size: int,
     storage_config: Dict,
     metadata: Dict,
-    renderer: GPURenderer,
+    renderer: Renderer,
     rendering_config: Dict
 ) -> str:
     """Create images in HDF5/NPZ/Zarr format using specified renderer."""
