@@ -39,7 +39,21 @@ def create_images_from_data(
     
     from .data_loader import create_price_sequences
     
-    closing_prices = data['Close'].values
+    # Filter to only keep 'Close' column if DataFrame
+    if isinstance(data, pd.DataFrame):
+        if 'Close' in data.columns:
+            data = data[['Close']]
+        else:
+            data = pd.DataFrame()  # Empty if Close not available
+    
+    # Check if we have data to work with
+    if isinstance(data, pd.DataFrame):
+        if data.empty or len(data.columns) == 0:
+            raise ValueError("No 'Close' price data available")
+        closing_prices = data.iloc[:, 0].values
+    else:  # Series case
+        closing_prices = data.values
+    
     sequences = create_price_sequences(closing_prices, seq_len)
     
     renderer = GPURenderer()
