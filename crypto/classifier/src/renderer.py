@@ -87,43 +87,55 @@ class Renderer:
         # Create output images on GPU (white background = 1.0)
         images_gpu = cp.ones((batch_size, height, width), dtype=cp.float32)
         
-        # Compute line coordinates for all batches
+        # Compute line coordinates for ALL batches at once (vectorized)
         x_coords = cp.linspace(0, width - 1, seq_len, dtype=cp.float32)
+        x_coords = cp.broadcast_to(x_coords, (batch_size, seq_len))
         y_coords = (1 - seqs_norm) * (height - 1)  # Shape: (batch_size, seq_len)
-        
-        # Draw lines using vectorized operations
-        for batch_idx in range(batch_size):
-            y = y_coords[batch_idx]
+
+        # Pre-compute all line segments for all images
+        x0 = x_coords[:, :-1]  # Shape: (batch_size, seq_len-1)
+        x1 = x_coords[:, 1:]
+        y0 = y_coords[:, :-1]
+        y1 = y_coords[:, 1:]
+
+        # Compute max steps needed for all segments
+        dx = cp.abs(x1 - x0)
+        dy = cp.abs(y1 - y0)
+        max_steps = int(cp.ceil(cp.max(cp.maximum(dx, dy)) * 2))
+
+        # Interpolate all line segments at once
+        t = cp.linspace(0, 1, max_steps).reshape(1, 1, -1)  # Shape: (1, 1, max_steps)
+        xs_all = x0[:, :, None] + t * (x1 - x0)[:, :, None]  # Shape: (batch_size, seq_len-1, max_steps)
+        ys_all = y0[:, :, None] + t * (y1 - y0)[:, :, None]
+
+        # Round and convert to integers
+        xs_all = cp.round(xs_all).astype(cp.int32)
+        ys_all = cp.round(ys_all).astype(cp.int32)
+
+        # Clip to image bounds
+        xs_all = cp.clip(xs_all, 0, width - 1)
+        ys_all = cp.clip(ys_all, 0, height - 1)
+
+        # Flatten to get all points
+        xs_flat = xs_all.reshape(batch_size, -1)  # Shape: (batch_size, (seq_len-1)*max_steps)
+        ys_flat = ys_all.reshape(batch_size, -1)
+
+        # Draw all points at once using advanced indexing
+        batch_indices = cp.arange(batch_size)[:, None]
+        batch_indices = cp.broadcast_to(batch_indices, xs_flat.shape)
+
+        images_gpu[batch_indices.ravel(), ys_flat.ravel(), xs_flat.ravel()] = 0.0
+
+        # Apply line thickness if needed (vectorized)
+        if line_width > 1:
+            half_w = line_width // 2
+            offsets = cp.arange(-half_w, half_w + 1)
             
-            # Draw line segments
-            for i in range(seq_len - 1):
-                x0, x1 = int(x_coords[i]), int(x_coords[i + 1])
-                y0, y1 = int(y[i]), int(y[i + 1])
-                
-                # Bresenham-style interpolation
-                dx = abs(x1 - x0)
-                dy = abs(y1 - y0)
-                steps = max(dx, dy, 1) * 2
-                
-                t = cp.linspace(0, 1, steps)
-                xs = cp.round(x0 + t * (x1 - x0)).astype(cp.int32)
-                ys = cp.round(y0 + t * (y1 - y0)).astype(cp.int32)
-                
-                # Clip to image bounds
-                xs = cp.clip(xs, 0, width - 1)
-                ys = cp.clip(ys, 0, height - 1)
-                
-                # Draw pixels (black line = 0.0)
-                images_gpu[batch_idx, ys, xs] = 0.0
-                
-                # Apply line thickness
-                if line_width > 1:
-                    half_w = line_width // 2
-                    for dy_offset in range(-half_w, half_w + 1):
-                        for dx_offset in range(-half_w, half_w + 1):
-                            ys_thick = cp.clip(ys + dy_offset, 0, height - 1)
-                            xs_thick = cp.clip(xs + dx_offset, 0, width - 1)
-                            images_gpu[batch_idx, ys_thick, xs_thick] = 0.0
+            for dy_offset in offsets:
+                for dx_offset in offsets:
+                    ys_thick = cp.clip(ys_flat + dy_offset, 0, height - 1)
+                    xs_thick = cp.clip(xs_flat + dx_offset, 0, width - 1)
+                    images_gpu[batch_indices.ravel(), ys_thick.ravel(), xs_thick.ravel()] = 0.0
         
         # Transfer back to CPU
         result = images_gpu.get()
