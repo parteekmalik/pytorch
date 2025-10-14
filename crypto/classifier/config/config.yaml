@@ -13,7 +13,6 @@ image:
   resolution:
     width: 800
     height: 500
-    dpi: 100
   rendering:
     mode: gpu
     gpu_batch_size: 2000

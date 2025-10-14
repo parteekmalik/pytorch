@@ -41,7 +41,7 @@ class GPURenderer:
         
         Args:
             sequence: 1D array of price values
-            resolution: Dict with 'width', 'height', 'dpi'
+            resolution: Dict with 'width', 'height'
             line_width: Width of the line
             
         Returns:
@@ -61,7 +61,7 @@ class GPURenderer:
         
         Args:
             sequences: 2D array of sequences (batch_size, seq_len)
-            resolution: Dict with 'width', 'height', 'dpi'
+            resolution: Dict with 'width', 'height'
             line_width: Width of the line
             
         Returns:

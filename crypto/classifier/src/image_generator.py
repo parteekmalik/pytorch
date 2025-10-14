@@ -27,7 +27,7 @@ def create_images_from_data(
     rendering_config: Optional[Dict] = None
 ) -> str:
     if resolution is None:
-        resolution = {'width': 800, 'height': 500, 'dpi': 100}
+        resolution = {'width': 800, 'height': 500}
     
     if storage_config is None:
         storage_config = {'format': 'jpeg', 'mode': 'single', 'images_per_file': 50000}
@@ -61,7 +61,7 @@ def create_images_from_data(
     logger.info(f"Generating {len(sequences)} images")
     logger.info("Rendering mode: GPU")
     logger.info(f"Storage format: {storage_format} ({storage_config['mode']} mode)")
-    logger.info(f"Resolution: {resolution['width']}x{resolution['height']} @ {resolution['dpi']} DPI")
+    logger.info(f"Resolution: {resolution['width']}x{resolution['height']}")
     
     if metadata is None:
         metadata = {}
