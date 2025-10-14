@@ -119,19 +119,24 @@ class GPURenderer:
         # y coordinates vary per image (2D array: batch_size x total_points)
         y_pixels = cp.clip(cp.round(y_all).astype(cp.int32), 0, height - 1)
         
-        # Set all pixels for all images (vectorized as much as possible)
+        # Set all pixels for all images properly
         for batch_idx in range(batch_size):
-            # Draw main line (x_pixels is 1D, same for all images)
-            imgs_gpu[batch_idx, y_pixels[batch_idx], x_pixels] = 0
-            
-            # Apply thickness if needed
-            if line_width > 1:
-                half_width = line_width // 2
-                for dy in range(1, half_width + 1):
-                    y_up = cp.clip(y_pixels[batch_idx] + dy, 0, height - 1)
-                    y_down = cp.clip(y_pixels[batch_idx] - dy, 0, height - 1)
-                    imgs_gpu[batch_idx, y_up, x_pixels] = 0
-                    imgs_gpu[batch_idx, y_down, x_pixels] = 0
+            # Loop through ALL interpolation points to ensure coverage
+            for i in range(len(x_pixels)):
+                x_px = x_pixels[i]
+                y_px = y_pixels[batch_idx, i]
+                
+                # Draw main pixel
+                imgs_gpu[batch_idx, y_px, x_px] = 0
+                
+                # Apply thickness if needed
+                if line_width > 1:
+                    half_width = line_width // 2
+                    for dy in range(-half_width, half_width + 1):
+                        for dx in range(-half_width, half_width + 1):
+                            ny = cp.clip(y_px + dy, 0, height - 1)
+                            nx = cp.clip(x_px + dx, 0, width - 1)
+                            imgs_gpu[batch_idx, ny, nx] = 0
         
         # Transfer back to CPU
         imgs_np = cp.asnumpy(imgs_gpu)
