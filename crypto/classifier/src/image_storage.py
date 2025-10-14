@@ -118,8 +118,7 @@ class ImageStorageWriter:
         
         self.hdf5_file.attrs['resolution'] = [
             self.resolution['width'],
-            self.resolution['height'],
-            self.resolution['dpi']
+            self.resolution['height']
         ]
         self.hdf5_file.attrs['created_at'] = datetime.now().isoformat()
         
@@ -158,8 +157,7 @@ class ImageStorageWriter:
         self.zarr_root.attrs.update(self.metadata)
         self.zarr_root.attrs['resolution'] = [
             self.resolution['width'],
-            self.resolution['height'],
-            self.resolution['dpi']
+            self.resolution['height']
         ]
         self.zarr_root.attrs['created_at'] = datetime.now().isoformat()
     
@@ -243,8 +241,7 @@ class ImageStorageWriter:
             **self.metadata,
             resolution=np.array([
                 self.resolution['width'],
-                self.resolution['height'],
-                self.resolution['dpi']
+                self.resolution['height']
             ]),
             created_at=datetime.now().isoformat()
         )
