@@ -108,7 +108,7 @@ class Renderer:
             img = set_background(img, 'white')
             
             # Convert to numpy array and normalize to [0, 1]
-            img_array = img.to_numpy()[:, :, 0] / 255.0  # Take only grayscale channel
+            img_array = img.to_numpy() / 255.0  # Already grayscale, no need for channel indexing
             
             # Invert colors: Datashader uses black lines on white background
             # We want white background (1.0) with black lines (0.0)
