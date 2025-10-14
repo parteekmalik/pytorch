@@ -4,7 +4,7 @@ data:
   symbol: BTCUSDT
   interval: 1m
   start_date: '2020-01'
-  end_date: '2020-02'
+  end_date: '2020-01'
 
 image:
   seq_len: 100

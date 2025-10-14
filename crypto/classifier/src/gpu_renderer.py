@@ -90,8 +90,8 @@ class GPURenderer:
         x_coords = cp.linspace(0, width - 1, seq_len, dtype=cp.float32)
         y_coords = (1 - seqs_norm) * (height - 1)
         
-        # Interpolate ALL line segments at once (fully vectorized)
-        points_per_segment = max(int(width / seq_len) * 2, 10)
+        # Dense sampling: at least 2 points per pixel width + extra for thickness
+        points_per_segment = max(int(width / seq_len) * 2, line_width * 10, 100)
         t = cp.linspace(0, 1, points_per_segment, dtype=cp.float32)
         
         # Get start/end points for all segments
