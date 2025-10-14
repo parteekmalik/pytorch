@@ -9,7 +9,6 @@ data:
 image:
   seq_len: 100
   line_width: 3
-  batch_size: 10000
   resolution:
     width: 800
     height: 500
