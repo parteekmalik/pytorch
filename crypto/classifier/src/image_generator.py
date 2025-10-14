@@ -7,7 +7,7 @@ from typing import Tuple, Dict, Optional
 import pandas as pd
 from .utils import setup_logger, check_gpu_availability, get_array_module
 from .image_storage import ImageStorageWriter
-from .gpu_renderer import GPURenderer
+from .renderer import Renderer
 
 logger = setup_logger(__name__)
 
@@ -56,7 +56,7 @@ def create_images_from_data(
     
     sequences = create_price_sequences(closing_prices, seq_len)
     
-    renderer = GPURenderer()
+    renderer = Renderer()
     
     logger.info(f"Generating {len(sequences)} images")
     logger.info("Rendering mode: GPU")
