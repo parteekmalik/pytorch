@@ -5,6 +5,7 @@ import numpy as np
 import os
 from typing import Tuple, Dict, Optional
 import pandas as pd
+from tqdm import tqdm
 from .utils import setup_logger, check_gpu_availability, get_array_module
 from .image_storage import ImageStorageWriter
 from .renderer import Renderer
@@ -148,15 +149,19 @@ def _create_images_storage(
     logger.info("Using GPU batch rendering for storage")
     gpu_batch_size = rendering_config.get('gpu_batch_size', 1000)
     
-    for start_idx in range(0, len(sequences), gpu_batch_size):
-        end_idx = min(start_idx + gpu_batch_size, len(sequences))
-        batch_sequences = sequences[start_idx:end_idx]
-        
-        # Render entire batch on GPU in parallel (vectorized)
-        images = renderer.render_batch_gpu(batch_sequences, resolution, line_width)
-        
-        writer.write_batch(images, batch_sequences)
-        logger.info(f'Processed {end_idx}/{len(sequences)} images (GPU)')
+    # Create global progress bar for all images
+    with tqdm(total=len(sequences), desc="Generating images", unit="img") as pbar:
+        for start_idx in range(0, len(sequences), gpu_batch_size):
+            end_idx = min(start_idx + gpu_batch_size, len(sequences))
+            batch_sequences = sequences[start_idx:end_idx]
+            
+            # Render entire batch on GPU in parallel (vectorized)
+            images = renderer.render_batch_gpu(batch_sequences, resolution, line_width)
+            
+            writer.write_batch(images, batch_sequences)
+            
+            # Update global progress bar
+            pbar.update(len(images))
     
     writer.close()
     logger.info(f"Created {len(sequences)} images in {storage_config['format']} format")

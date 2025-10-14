@@ -124,9 +124,6 @@ class Renderer:
                             ys_thick = cp.clip(ys + dy_offset, 0, height - 1)
                             xs_thick = cp.clip(xs + dx_offset, 0, width - 1)
                             images_gpu[batch_idx, ys_thick, xs_thick] = 0.0
-            
-            if batch_idx % 100 == 0:
-                logger.info(f"Processed {batch_idx + 1}/{batch_size} images")
         
         # Transfer back to CPU
         result = images_gpu.get()
