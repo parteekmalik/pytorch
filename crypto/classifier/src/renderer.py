@@ -62,7 +62,7 @@ class Renderer:
         
         batch_size, seq_len, _ = ohlc_sequences.shape
         height = resolution['height']
-        width = seq_len * 4  # Auto-calculate width: 4 pixels per bar
+        width = seq_len * 8  # Auto-calculate width: 8 pixels per bar
         
         # Move to GPU as float32
         ohlc_gpu = cp.asarray(ohlc_sequences, dtype=cp.float32)  # (batch, seq_len, 4)
@@ -102,8 +102,8 @@ class Renderer:
         # VECTORIZED OHLC BAR RENDERING
         # Process all bars for all batches using GPU parallelism
         
-        # Calculate bar positions (fixed 4-pixel layout)
-        bar_x_positions = cp.arange(seq_len) * 4  # Each bar starts at x = bar_idx * 4
+        # Calculate bar positions (fixed 8-pixel layout)
+        bar_x_positions = cp.arange(seq_len) * 8  # Each bar starts at x = bar_idx * 8
         
         # Compute colors (vectorized)
         is_bullish = closes >= opens  # (batch, seq_len)
@@ -122,7 +122,7 @@ class Renderer:
             
             # VECTORIZED BAR DRAWING using broadcasting
             
-            # 1. Draw High-Low line (center pixel, x_base + 1)
+            # 1. Draw High-Low line (center pixel, x_base + 3)
             # Create y-coordinate grid
             y_coords = cp.arange(height)[:, None]  # (height, 1)
             
@@ -130,17 +130,19 @@ class Renderer:
             hl_mask = (y_coords >= cp.minimum(high_y, low_y)[None, :]) & (y_coords <= cp.maximum(high_y, low_y)[None, :])
             
             # Apply High-Low line to all batches simultaneously
-            images_gpu[:, :, x_base + 1] = cp.where(hl_mask.T, 0.0, images_gpu[:, :, x_base + 1])
+            images_gpu[:, :, x_base + 3] = cp.where(hl_mask.T, 0.0, images_gpu[:, :, x_base + 3])
             
-            # 2. Draw Open tick (left pixel, x_base)
+            # 2. Draw Open tick (3-pixel horizontal line, x_base + 0, 1, 2)
             # Apply Open tick to all batches
-            images_gpu[:, open_y, x_base] = 0.0
+            for x in range(3):
+                images_gpu[:, open_y, x_base + x] = 0.0
             
-            # 3. Draw Close tick (right pixel, x_base + 2)
+            # 3. Draw Close tick (3-pixel horizontal line, x_base + 4, 5, 6)
             # Apply Close tick to all batches
-            images_gpu[:, close_y, x_base + 2] = 0.0
+            for x in range(3):
+                images_gpu[:, close_y, x_base + 4 + x] = 0.0
             
-            # Note: x_base + 3 is the gap (remains white/1.0)
+            # Note: x_base + 7 is the gap (remains white/1.0)
         
         return images_gpu.get()
 
