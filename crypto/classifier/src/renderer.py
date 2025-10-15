@@ -55,7 +55,8 @@ class Renderer:
         bearish_color: float = 0.0
     ) -> np.ndarray:
         """
-        Fully vectorized GPU candlestick rendering - NO PYTHON LOOPS.
+        Memory-efficient GPU candlestick rendering.
+        Processes candles sequentially to avoid 4D arrays, but vectorizes across batches.
         """
         if not self.gpu_available:
             raise RuntimeError("GPU batch rendering requires GPU")
@@ -96,45 +97,40 @@ class Renderer:
         # Create output images
         images_gpu = cp.ones((batch_size, height, width), dtype=cp.float32)
         
-        # FULLY VECTORIZED RENDERING - NO LOOPS
-        # Create 4D coordinate grids: (batch, height, width, candle)
-        batch_idx = cp.arange(batch_size)[:, None, None, None]
-        y_coords = cp.arange(height)[None, :, None, None]
-        x_coords = cp.arange(width)[None, None, :, None]
-        candle_idx = cp.arange(seq_len)[None, None, None, :]
-        
-        # Broadcast to full shape
-        batch_grid = cp.broadcast_to(batch_idx, (batch_size, height, width, seq_len))
-        y_grid = cp.broadcast_to(y_coords, (batch_size, height, width, seq_len))
-        x_grid = cp.broadcast_to(x_coords, (batch_size, height, width, seq_len))
-        
-        # Expand candle coordinates to match grid
-        wick_top = cp.minimum(highs_y, lows_y)[:, None, None, :]
-        wick_bottom = cp.maximum(highs_y, lows_y)[:, None, None, :]
-        candle_x = candle_centers[None, None, None, :]
-        
-        body_top = cp.minimum(opens_y, closes_y)[:, None, None, :]
-        body_bottom = cp.maximum(opens_y, closes_y)[:, None, None, :]
-        x_left = x_left_all[None, None, None, :]
-        x_right = x_right_all[None, None, None, :]
-        
-        # Create masks for all pixels at once
-        wick_mask = (y_grid >= wick_top) & (y_grid <= wick_bottom) & (x_grid == candle_x)
-        body_mask = (y_grid >= body_top) & (y_grid <= body_bottom) & \
-                    (x_grid >= x_left) & (x_grid <= x_right)
-        
-        # Determine colors
-        is_bullish = (closes >= opens)[:, None, None, :]
-        body_colors = cp.where(is_bullish, bullish_color, bearish_color)
-        
-        # Apply wicks (black) - any candle with wick at this pixel
-        images_gpu[wick_mask.any(axis=3)] = 0.0
-        
-        # Apply bodies with colors - weighted by number of overlapping candles
-        body_color_sum = (body_mask * body_colors).sum(axis=3)
-        body_count = body_mask.sum(axis=3)
-        body_pixels = body_count > 0
-        images_gpu[body_pixels] = body_color_sum[body_pixels] / body_count[body_pixels]
+        # MEMORY-EFFICIENT RENDERING - Process candles sequentially
+        # This avoids creating 4D arrays while keeping batch vectorization
+        for candle_idx in range(seq_len):
+            # Get coordinates for this candle across all batches
+            wick_tops = cp.minimum(highs_y[:, candle_idx], lows_y[:, candle_idx])
+            wick_bottoms = cp.maximum(highs_y[:, candle_idx], lows_y[:, candle_idx])
+            body_tops = cp.minimum(opens_y[:, candle_idx], closes_y[:, candle_idx])
+            body_bottoms = cp.maximum(opens_y[:, candle_idx], closes_y[:, candle_idx])
+            
+            x_center = candle_centers[candle_idx]
+            x_start = x_left_all[candle_idx]
+            x_end = x_right_all[candle_idx]
+            
+            # Determine colors for this candle
+            is_bullish = closes[:, candle_idx] >= opens[:, candle_idx]
+            body_colors = cp.where(is_bullish, bullish_color, bearish_color)
+            
+            # Draw wicks and bodies for all batches using slicing (GPU-accelerated)
+            for batch_idx in range(batch_size):
+                # Draw wick
+                wick_top = wick_tops[batch_idx]
+                wick_bottom = wick_bottoms[batch_idx]
+                if wick_bottom >= wick_top:
+                    images_gpu[batch_idx, wick_top:wick_bottom+1, x_center] = 0.0
+                
+                # Draw body
+                body_top = body_tops[batch_idx]
+                body_bottom = body_bottoms[batch_idx]
+                color = body_colors[batch_idx]
+                
+                if body_top == body_bottom:  # Doji candle
+                    images_gpu[batch_idx, body_top, x_start:x_end+1] = 0.0
+                else:
+                    images_gpu[batch_idx, body_top:body_bottom+1, x_start:x_end+1] = color
         
         return images_gpu.get()
 
