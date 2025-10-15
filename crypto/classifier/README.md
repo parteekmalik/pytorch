@@ -87,12 +87,8 @@ data:
 
 image:
   seq_len: 100 # Sequence length for images
-  line_width: 3 # Line width in plots
-  batch_size: 10000 # Batch size for processing
   resolution:
-    width: 800 # Image width in pixels
-    height: 500 # Image height in pixels
-    dpi: 100 # Dots per inch
+    height: 500 # Image height in pixels (width auto-calculated: seq_len * 4)
   storage:
     format: hdf5 # Options: hdf5, npz, zarr, jpeg
     mode: single # 'single' = one file, 'batch' = multiple files
@@ -126,23 +122,12 @@ data = download_crypto_data(
 ```python
 from src.image_generator import create_images_from_data
 
-# Option 1: JPEG format (individual files)
-images_folder = create_images_from_data(
-    data=data,
-    output_path='crypto/classifier/data/processed/my_images',
-    seq_len=100,
-    line_width=3,
-    resolution={'width': 800, 'height': 500, 'dpi': 100},
-    storage_config={'format': 'jpeg', 'mode': 'single', 'images_per_file': 50000}
-)
-
-# Option 2: HDF5 format (single file, recommended for millions of images)
+# HDF5 format (single file, recommended for millions of images)
 hdf5_file = create_images_from_data(
     data=data,
     output_path='crypto/classifier/data/processed/my_images.h5',
     seq_len=100,
-    line_width=3,
-    resolution={'width': 800, 'height': 500, 'dpi': 100},
+    resolution={'height': 500},  # Width auto-calculated: seq_len * 4
     storage_config={'format': 'hdf5', 'mode': 'single', 'images_per_file': 50000},
     metadata={'symbol': 'BTCUSDT', 'interval': '1m'}
 )
@@ -171,6 +156,36 @@ model, metadata = load_model('crypto/classifier/models/model_20240101_120000.pkl
 
 # List all models
 models = list_models('crypto/classifier/models')
+```
+
+## OHLC Bar Chart Format
+
+The pipeline generates OHLC (Open, High, Low, Close) bar charts with a fixed pixel layout:
+
+### Bar Structure
+Each OHLC bar uses exactly **4 pixels** horizontally:
+- **Pixel 0**: Open tick (horizontal line at open price)
+- **Pixel 1**: High-Low line (vertical line from low to high price)  
+- **Pixel 2**: Close tick (horizontal line at close price)
+- **Pixel 3**: Gap (empty space for separation)
+
+### Image Dimensions
+- **Height**: Configurable (default: 500 pixels)
+- **Width**: Auto-calculated as `seq_len * 4` pixels
+- **Example**: 100 bars = 400 pixels wide
+
+### Visual Features
+- **White background** (pixel value: 1.0)
+- **Black bars** (pixel value: 0.0) 
+- **Fixed spacing** between bars for consistent visualization
+- **GPU-accelerated rendering** using CuPy for high performance
+
+### Configuration
+```yaml
+image:
+  seq_len: 100  # Number of bars per image
+  resolution:
+    height: 500  # Height in pixels (width auto-calculated)
 ```
 
 ## GPU Acceleration

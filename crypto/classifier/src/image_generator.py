@@ -26,7 +26,7 @@ def create_images_from_data(
     rendering_config: Optional[Dict] = None
 ) -> str:
     if resolution is None:
-        resolution = {'width': 800, 'height': 500}
+        resolution = {'height': 500}  # Width auto-calculated
     
     if storage_config is None:
         storage_config = {'format': 'hdf5', 'mode': 'single', 'images_per_file': 50000}
@@ -58,7 +58,7 @@ def create_images_from_data(
     metadata['seq_len'] = seq_len
     metadata['num_sequences'] = len(sequences)
     metadata['rendering_mode'] = 'gpu'
-    metadata['chart_type'] = 'candlestick'
+    metadata['chart_type'] = 'ohlc_bar'
     
     return _create_images_storage(
         sequences, output_path, resolution,
@@ -95,7 +95,7 @@ def _create_images_storage(
             batch_sequences = sequences[start_idx:end_idx]
             
             # Render entire batch on GPU in parallel (vectorized)
-            images = renderer.render_candlestick_batch_gpu(batch_sequences, resolution, candle_width_ratio=0.8)
+            images = renderer.render_ohlc_batch_gpu(batch_sequences, resolution)
             
             writer.write_batch(images, batch_sequences)
             

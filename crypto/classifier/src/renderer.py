@@ -46,37 +46,36 @@ class Renderer:
         """
         return self.render_batch_gpu(sequence.reshape(1, -1), resolution, line_width)[0]
     
-    def render_candlestick_batch_gpu(
+    def render_ohlc_batch_gpu(
         self,
         ohlc_sequences: np.ndarray,
         resolution: Dict[str, int],
-        candle_width_ratio: float = 0.8,
         bullish_color: float = 0.2,
         bearish_color: float = 0.0
     ) -> np.ndarray:
         """
-        Shared-memory GPU rendering with zero data copying.
-        All images read from the same OHLC data array using offsets.
+        OHLC Bar Chart GPU rendering with fixed 4-pixel layout.
+        Each bar uses 4 pixels: 1px Open tick, 1px High-Low line, 1px Close tick, 1px gap.
         """
         if not self.gpu_available:
             raise RuntimeError("GPU batch rendering requires GPU")
         
         batch_size, seq_len, _ = ohlc_sequences.shape
-        width, height = resolution['width'], resolution['height']
+        height = resolution['height']
+        width = seq_len * 4  # Auto-calculate width: 4 pixels per bar
         
-        # Move to GPU as float32 - this is the ONLY data on GPU
+        # Move to GPU as float32
         ohlc_gpu = cp.asarray(ohlc_sequences, dtype=cp.float32)  # (batch, seq_len, 4)
         
         # Reshape for efficient access: (batch * seq_len, 4)
-        # This allows contiguous memory access
         ohlc_flat = ohlc_gpu.reshape(-1, 4)
         
         # Create batch indices for vectorized access
         batch_indices = cp.arange(batch_size)[:, None]  # (batch, 1)
-        candle_indices = cp.arange(seq_len)[None, :]    # (1, seq_len)
+        bar_indices = cp.arange(seq_len)[None, :]    # (1, seq_len)
         
-        # Vectorized indexing: all batches × all candles
-        flat_indices = batch_indices * seq_len + candle_indices  # (batch, seq_len)
+        # Vectorized indexing: all batches × all bars
+        flat_indices = batch_indices * seq_len + bar_indices  # (batch, seq_len)
         
         # Extract OHLC using fancy indexing (NO COPYING!)
         opens = ohlc_flat[flat_indices, 0]    # (batch, seq_len)
@@ -84,7 +83,7 @@ class Renderer:
         lows = ohlc_flat[flat_indices, 2]     # (batch, seq_len)
         closes = ohlc_flat[flat_indices, 3]   # (batch, seq_len)
         
-        # Vectorized scaling to pixel coordinates (in-place where possible)
+        # Vectorized scaling to pixel coordinates
         all_prices = cp.stack([opens, highs, lows, closes], axis=-1).reshape(batch_size, -1)
         price_min = all_prices.min(axis=1, keepdims=True)
         price_max = all_prices.max(axis=1, keepdims=True)
@@ -97,62 +96,51 @@ class Renderer:
         lows_y = ((price_max - lows) * scale_factor).astype(cp.int32)
         closes_y = ((price_max - closes) * scale_factor).astype(cp.int32)
         
-        # Calculate candle positions (shared across all batches)
-        candle_spacing = width / seq_len
-        candle_width = int(candle_spacing * candle_width_ratio)
-        candle_centers = (cp.arange(seq_len) * candle_spacing + candle_spacing / 2).astype(cp.int32)
-        x_left_all = cp.maximum(0, candle_centers - candle_width // 2)
-        x_right_all = cp.minimum(width - 1, candle_centers + candle_width // 2)
-        
-        # Create output images
+        # Create output images (white background)
         images_gpu = cp.ones((batch_size, height, width), dtype=cp.float32)
         
-        # VECTORIZED RENDERING - Process all candles for all batches
-        # Use element-wise operations (CUDA kernels) instead of loops
+        # VECTORIZED OHLC BAR RENDERING
+        # Process all bars for all batches using GPU parallelism
         
-        # Compute wick coordinates (vectorized)
-        wick_tops = cp.minimum(highs_y, lows_y)      # (batch, seq_len)
-        wick_bottoms = cp.maximum(highs_y, lows_y)   # (batch, seq_len)
-        
-        # Compute body coordinates (vectorized)
-        body_tops = cp.minimum(opens_y, closes_y)    # (batch, seq_len)
-        body_bottoms = cp.maximum(opens_y, closes_y) # (batch, seq_len)
+        # Calculate bar positions (fixed 4-pixel layout)
+        bar_x_positions = cp.arange(seq_len) * 4  # Each bar starts at x = bar_idx * 4
         
         # Compute colors (vectorized)
-        is_bullish = closes >= opens                  # (batch, seq_len)
-        body_colors = cp.where(is_bullish, bullish_color, bearish_color)
+        is_bullish = closes >= opens  # (batch, seq_len)
+        bar_colors = cp.where(is_bullish, bullish_color, bearish_color)
         
-        # OPTIMIZED DRAWING: Process candles with minimal loops
-        # Use broadcasting and advanced indexing for GPU parallelism
-        for candle_idx in range(seq_len):
-            x_center = candle_centers[candle_idx]
-            x_start = x_left_all[candle_idx]
-            x_end = x_right_all[candle_idx]
+        # OPTIMIZED DRAWING: Process bars with minimal loops
+        for bar_idx in range(seq_len):
+            x_base = bar_x_positions[bar_idx]
             
-            # Extract coordinates for this candle across all batches
-            wick_top = wick_tops[:, candle_idx]       # (batch,)
-            wick_bottom = wick_bottoms[:, candle_idx] # (batch,)
-            body_top = body_tops[:, candle_idx]       # (batch,)
-            body_bottom = body_bottoms[:, candle_idx] # (batch,)
-            colors = body_colors[:, candle_idx]       # (batch,)
+            # Extract coordinates for this bar across all batches
+            open_y = opens_y[:, bar_idx]       # (batch,)
+            high_y = highs_y[:, bar_idx]       # (batch,)
+            low_y = lows_y[:, bar_idx]         # (batch,)
+            close_y = closes_y[:, bar_idx]     # (batch,)
+            colors = bar_colors[:, bar_idx]    # (batch,)
             
-            # VECTORIZED WICK DRAWING using broadcasting
+            # VECTORIZED BAR DRAWING using broadcasting
+            
+            # 1. Draw High-Low line (center pixel, x_base + 1)
             # Create y-coordinate grid
-            y_coords = cp.arange(height)[:, None]     # (height, 1)
+            y_coords = cp.arange(height)[:, None]  # (height, 1)
             
             # Broadcast comparison: (height, 1) vs (1, batch) -> (height, batch)
-            wick_mask = (y_coords >= wick_top[None, :]) & (y_coords <= wick_bottom[None, :])
+            hl_mask = (y_coords >= cp.minimum(high_y, low_y)[None, :]) & (y_coords <= cp.maximum(high_y, low_y)[None, :])
             
-            # Apply wicks to all batches simultaneously (in-place)
-            images_gpu[:, :, x_center] = cp.where(wick_mask.T, 0.0, images_gpu[:, :, x_center])
+            # Apply High-Low line to all batches simultaneously
+            images_gpu[:, :, x_base + 1] = cp.where(hl_mask.T, 0.0, images_gpu[:, :, x_base + 1])
             
-            # VECTORIZED BODY DRAWING using broadcasting
-            body_mask = (y_coords >= body_top[None, :]) & (y_coords <= body_bottom[None, :])
+            # 2. Draw Open tick (left pixel, x_base)
+            # Apply Open tick to all batches
+            images_gpu[:, open_y, x_base] = 0.0
             
-            # Apply bodies to all x-coordinates in the candle width
-            for x in range(int(x_start), int(x_end) + 1):
-                # Broadcast colors: (batch, 1) -> (height, batch) where mask is True
-                images_gpu[:, :, x] = cp.where(body_mask.T, colors[:, None], images_gpu[:, :, x])
+            # 3. Draw Close tick (right pixel, x_base + 2)
+            # Apply Close tick to all batches
+            images_gpu[:, close_y, x_base + 2] = 0.0
+            
+            # Note: x_base + 3 is the gap (remains white/1.0)
         
         return images_gpu.get()
 
