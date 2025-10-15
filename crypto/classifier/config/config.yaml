@@ -5,6 +5,7 @@ data:
   interval: 1m
   start_date: '2020-01'
   end_date: '2020-01'
+  max_sequences: 2000  # Set to a number (e.g., 1000) to limit for testing, null for all
 
 image:
   seq_len: 100  # Number of bars per image

@@ -78,12 +78,31 @@ This will:
 
 Edit `config/config.yaml` to customize:
 
+#### Testing with Limited Sequences
+
+For quick testing, limit the number of sequences generated:
+
+```yaml
+data:
+  max_sequences: 1000 # Generate only 1000 images instead of 44k+
+```
+
+#### Full Dataset Processing
+
+For production, process all available sequences:
+
+```yaml
+data:
+  max_sequences: null # Process all sequences (default)
+```
+
 ```yaml
 data:
   symbol: BTCUSDT # Trading pair
   interval: 1m # Time interval (1m, 5m, 1h, etc.)
   start_date: "2020-01" # Start date (YYYY-MM)
   end_date: "2024-01" # End date (YYYY-MM)
+  max_sequences: null # Optional: limit sequences for testing (e.g., 1000)
 
 image:
   seq_len: 100 # Sequence length for images
@@ -163,29 +182,34 @@ models = list_models('crypto/classifier/models')
 The pipeline generates OHLC (Open, High, Low, Close) bar charts with a fixed pixel layout:
 
 ### Bar Structure
+
 Each OHLC bar uses exactly **4 pixels** horizontally:
+
 - **Pixel 0**: High-Low vertical line
 - **Pixel 1**: Open price (single pixel)
 - **Pixel 2**: Close price (single pixel)
 - **Pixel 3**: Gap (empty space for separation)
 
 ### Image Dimensions
+
 - **Height**: Configurable (default: 500 pixels)
 - **Width**: Auto-calculated as `seq_len * 4` pixels
 - **Example**: 100 bars = 400 pixels wide
 
 ### Visual Features
+
 - **White background** (pixel value: 1.0)
-- **Black bars** (pixel value: 0.0) 
+- **Black bars** (pixel value: 0.0)
 - **Fixed spacing** between bars for consistent visualization
 - **GPU-accelerated rendering** using CuPy for high performance
 
 ### Configuration
+
 ```yaml
 image:
-  seq_len: 100  # Number of bars per image
+  seq_len: 100 # Number of bars per image
   resolution:
-    height: 500  # Height in pixels (width auto-calculated)
+    height: 500 # Height in pixels (width auto-calculated)
 ```
 
 ## GPU Acceleration
