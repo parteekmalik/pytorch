@@ -191,8 +191,8 @@ The pipeline generates OHLC (Open, High, Low, Close) bar charts with a fixed pix
 
 Each OHLC bar uses exactly **4 pixels** horizontally:
 
-- **Pixel 0**: High-Low vertical line
-- **Pixel 1**: Open price (single pixel)
+- **Pixel 0**: Open price (single pixel)
+- **Pixel 1**: High-Low vertical line
 - **Pixel 2**: Close price (single pixel)
 - **Pixel 3**: Gap (empty space for separation)
 

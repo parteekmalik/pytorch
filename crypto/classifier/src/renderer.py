@@ -53,7 +53,7 @@ class Renderer:
     ) -> np.ndarray:
         """
         OHLC Bar Chart GPU rendering with 4-pixel layout.
-        Pixel 0: High-Low line, Pixel 1: Open, Pixel 2: Close, Pixel 3: Gap
+        Pixel 0: Open, Pixel 1: High-Low line, Pixel 2: Close, Pixel 3: Gap
         Each image is independently scaled to its own price range.
         """
         if not self.gpu_available:
@@ -106,13 +106,13 @@ class Renderer:
                 low_y = int(lows_y[bar_idx])
                 close_y = int(closes_y[bar_idx])
                 
-                # Pixel 0: High-Low vertical line
+                # Pixel 0: Open (single pixel)
+                images_gpu[batch_idx, open_y, x_base] = 0.0
+                
+                # Pixel 1: High-Low vertical line
                 y_start = min(high_y, low_y)
                 y_end = max(high_y, low_y)
-                images_gpu[batch_idx, y_start:y_end+1, x_base] = 0.0
-                
-                # Pixel 1: Open (single pixel)
-                images_gpu[batch_idx, open_y, x_base + 1] = 0.0
+                images_gpu[batch_idx, y_start:y_end+1, x_base + 1] = 0.0
                 
                 # Pixel 2: Close (single pixel)
                 images_gpu[batch_idx, close_y, x_base + 2] = 0.0
