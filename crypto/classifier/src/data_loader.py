@@ -182,13 +182,12 @@ def download_crypto_data(
         
         combined_df = pd.concat(all_data, ignore_index=True)
         
-        # Return OHLC data for candlestick charts
-    # Return OHLC data as float32 (natural format)
-    ohlc_columns = ['Open', 'High', 'Low', 'Close']
-    result = combined_df[ohlc_columns].astype(np.float32)  # Use float32
-    
-    logger.info(f"Downloaded {len(result)} data points with columns: {ohlc_columns}")
-    return result
+        # Return OHLC data as float32 (natural format)
+        ohlc_columns = ['Open', 'High', 'Low', 'Close']
+        result = combined_df[ohlc_columns].astype(np.float32)  # Use float32
+        
+        logger.info(f"Downloaded {len(result)} data points with columns: {ohlc_columns}")
+        return result
         
     except Exception as e:
         raise ValueError(f"Download failed: {e}")
