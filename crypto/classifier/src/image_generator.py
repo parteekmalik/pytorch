@@ -60,8 +60,12 @@ def create_images_from_data(
     metadata['rendering_mode'] = 'gpu'
     metadata['chart_type'] = 'ohlc_bar'
     
+    # Calculate width for OHLC bars (4 pixels per bar)
+    width = seq_len * 4
+    resolution_with_width = {'width': width, 'height': resolution['height']}
+    
     return _create_images_storage(
-        sequences, output_path, resolution,
+        sequences, output_path, resolution_with_width,
         storage_config, metadata, renderer, rendering_config
     )
 

@@ -76,7 +76,8 @@ class ImageStorageWriter:
         self.hdf5_file = h5py.File(file_path, 'w')
         
         height = self.resolution['height']
-        width = self.resolution['width']
+        seq_len = self.metadata.get('seq_len', 100)
+        width = seq_len * 4  # Auto-calculate width for OHLC bars
         
         max_shape = (None, height, width) if self.mode == 'single' else (self.images_per_file, height, width)
         
@@ -106,7 +107,7 @@ class ImageStorageWriter:
             self.hdf5_file.attrs[key] = value
         
         self.hdf5_file.attrs['resolution'] = [
-            self.resolution['width'],
+            width,  # Auto-calculated width
             self.resolution['height']
         ]
         self.hdf5_file.attrs['created_at'] = datetime.now().isoformat()
