@@ -51,7 +51,7 @@ def create_images_from_data(
     logger.info(f"Generating {len(sequences)} images")
     logger.info("Rendering mode: GPU")
     logger.info(f"Storage format: hdf5 ({storage_config['mode']} mode)")
-    logger.info(f"Resolution: {resolution['width']}x{resolution['height']}")
+    logger.info(f"Resolution: {seq_len * 4}x{resolution['height']} (width auto-calculated)")
     
     if metadata is None:
         metadata = {}
