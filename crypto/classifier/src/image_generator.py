@@ -58,17 +58,17 @@ def create_images_from_data(
     if metadata is None:
         metadata = {}
     metadata['seq_len'] = seq_len
-    metadata['line_width'] = line_width
     metadata['num_sequences'] = len(sequences)
     metadata['rendering_mode'] = 'gpu'
+    metadata['chart_type'] = 'candlestick'
     
     if storage_format == 'jpeg':
         return _create_images_jpeg(
-            sequences, output_path, line_width, resolution, batch_size, renderer
+            sequences, output_path, resolution, batch_size, renderer
         )
     else:
         return _create_images_storage(
-            sequences, output_path, line_width, resolution, batch_size,
+            sequences, output_path, resolution,
             storage_config, metadata, renderer, rendering_config
         )
 
@@ -76,7 +76,6 @@ def create_images_from_data(
 def _create_images_jpeg(
     sequences: np.ndarray,
     images_folder: str,
-    line_width: int,
     resolution: Dict[str, int],
     batch_size: int,
     renderer: Renderer
@@ -119,9 +118,7 @@ def _create_images_jpeg(
 def _create_images_storage(
     sequences: np.ndarray,
     output_path: str,
-    line_width: int,
     resolution: Dict[str, int],
-    batch_size: int,
     storage_config: Dict,
     metadata: Dict,
     renderer: Renderer,
