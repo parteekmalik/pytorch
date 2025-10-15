@@ -19,16 +19,16 @@ def create_ohlc_sequences(ohlc_data: np.ndarray, seq_len: int) -> np.ndarray:
     Create sequences of OHLC data for candlestick rendering.
     
     Args:
-        ohlc_data: 2D array (n_samples, 4) with [Open, High, Low, Close] as int32
+        ohlc_data: 2D array (n_samples, 4) with [Open, High, Low, Close]
         seq_len: Number of candles per sequence
         
     Returns:
-        3D array (n_sequences, seq_len, 4) with OHLC data as int32
+        3D array (n_sequences, seq_len, 4) with OHLC data
     """
     n_samples = len(ohlc_data)
     n_sequences = n_samples - seq_len + 1
     
-    sequences = np.zeros((n_sequences, seq_len, 4), dtype=np.int32)  # Use int32
+    sequences = np.zeros((n_sequences, seq_len, 4), dtype=np.float32)  # float32
     for i in range(n_sequences):
         sequences[i] = ohlc_data[i:i + seq_len]
     
@@ -137,8 +137,7 @@ def download_crypto_data(
     interval: str,
     start_date_str: str,
     end_date_str: str,
-    cache_dir: str,
-    decimal_precision: int = 100
+    cache_dir: str
 ) -> pd.DataFrame:
     """
     Download cryptocurrency data from Binance for a date range.
@@ -184,15 +183,12 @@ def download_crypto_data(
         combined_df = pd.concat(all_data, ignore_index=True)
         
         # Return OHLC data for candlestick charts
-        ohlc_columns = ['Open', 'High', 'Low', 'Close']
-        result = combined_df[ohlc_columns]
-        
-        # Convert to int32 using decimal precision for faster GPU operations
-        result_int = (result * decimal_precision).astype(np.int32)
-        
-        logger.info(f"Downloaded {len(result_int)} data points with columns: {ohlc_columns}")
-        logger.info(f"Converted to int32 with decimal_precision={decimal_precision}")
-        return result_int
+    # Return OHLC data as float32 (natural format)
+    ohlc_columns = ['Open', 'High', 'Low', 'Close']
+    result = combined_df[ohlc_columns].astype(np.float32)  # Use float32
+    
+    logger.info(f"Downloaded {len(result)} data points with columns: {ohlc_columns}")
+    return result
         
     except Exception as e:
         raise ValueError(f"Download failed: {e}")

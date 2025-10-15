@@ -51,21 +51,11 @@ class Renderer:
         ohlc_sequences: np.ndarray,
         resolution: Dict[str, int],
         candle_width_ratio: float = 0.8,
-        bullish_color: float = 0.2,  # Dark gray for bullish (close > open)
-        bearish_color: float = 0.0   # Black for bearish (close < open)
+        bullish_color: float = 0.2,
+        bearish_color: float = 0.0
     ) -> np.ndarray:
         """
-        Render Japanese candlestick charts on GPU using int32 operations.
-        
-        Args:
-            ohlc_sequences: 3D array (batch_size, seq_len, 4) with int32 OHLC data
-            resolution: Dict with 'width', 'height'
-            candle_width_ratio: Width of candle body relative to available space (0.0-1.0)
-            bullish_color: Gray value for bullish candles (close > open)
-            bearish_color: Gray value for bearish candles (close < open)
-            
-        Returns:
-            3D array of images (batch_size, height, width)
+        Fully vectorized GPU candlestick rendering - NO PYTHON LOOPS.
         """
         if not self.gpu_available:
             raise RuntimeError("GPU batch rendering requires GPU")
@@ -73,96 +63,79 @@ class Renderer:
         batch_size, seq_len, _ = ohlc_sequences.shape
         width, height = resolution['width'], resolution['height']
         
-        # Move to GPU - data is already int32
-        ohlc_gpu = cp.asarray(ohlc_sequences, dtype=cp.int32)
+        # Move to GPU as float32
+        ohlc_gpu = cp.asarray(ohlc_sequences, dtype=cp.float32)
         
-        # Extract OHLC as int32
-        opens_int = ohlc_gpu[:, :, 0]
-        highs_int = ohlc_gpu[:, :, 1]
-        lows_int = ohlc_gpu[:, :, 2]
-        closes_int = ohlc_gpu[:, :, 3]
+        # Extract OHLC
+        opens = ohlc_gpu[:, :, 0]
+        highs = ohlc_gpu[:, :, 1]
+        lows = ohlc_gpu[:, :, 2]
+        closes = ohlc_gpu[:, :, 3]
         
-        # Calculate price range using int32
-        all_prices_int = ohlc_gpu.reshape(batch_size, -1)
-        price_min = all_prices_int.min(axis=1, keepdims=True)
-        price_max = all_prices_int.max(axis=1, keepdims=True)
-        price_range = price_max - price_min
-        price_range = cp.where(price_range == 0, 1, price_range)
+        # Vectorized scaling to pixel coordinates
+        all_prices = ohlc_gpu.reshape(batch_size, -1)
+        price_min = all_prices.min(axis=1, keepdims=True)
+        price_max = all_prices.max(axis=1, keepdims=True)
+        price_range = cp.maximum(price_max - price_min, 1e-8)
         
-        # Direct int32 scaling to pixel coordinates using integer division
-        opens_y = ((price_max - opens_int) * (height - 1) // price_range).astype(cp.int32)
-        highs_y = ((price_max - highs_int) * (height - 1) // price_range).astype(cp.int32)
-        lows_y = ((price_max - lows_int) * (height - 1) // price_range).astype(cp.int32)
-        closes_y = ((price_max - closes_int) * (height - 1) // price_range).astype(cp.int32)
+        # Scale to pixels (float32 operations are FAST on GPU)
+        opens_y = ((price_max - opens) * (height - 1) / price_range).astype(cp.int32)
+        highs_y = ((price_max - highs) * (height - 1) / price_range).astype(cp.int32)
+        lows_y = ((price_max - lows) * (height - 1) / price_range).astype(cp.int32)
+        closes_y = ((price_max - closes) * (height - 1) / price_range).astype(cp.int32)
         
-        # Calculate X positions for each candle - use int32
+        # Calculate candle positions
         candle_spacing = width / seq_len
         candle_width = int(candle_spacing * candle_width_ratio)
-        candle_centers = (cp.arange(seq_len, dtype=cp.int32) * candle_spacing + candle_spacing / 2).astype(cp.int32)
+        candle_centers = (cp.arange(seq_len) * candle_spacing + candle_spacing / 2).astype(cp.int32)
         
-        # Create output images (white background)
+        # Vectorized coordinate calculations
+        x_left_all = cp.maximum(0, candle_centers - candle_width // 2)
+        x_right_all = cp.minimum(width - 1, candle_centers + candle_width // 2)
+        
+        # Create output images
         images_gpu = cp.ones((batch_size, height, width), dtype=cp.float32)
         
-        # Step 1: Pre-compute all candle positions (vectorized) - use int32
-        # Broadcast candle_centers to all batches: (batch_size, seq_len)
-        candle_centers_broadcast = cp.broadcast_to(candle_centers, (batch_size, seq_len))
+        # FULLY VECTORIZED RENDERING - NO LOOPS
+        # Create 4D coordinate grids: (batch, height, width, candle)
+        batch_idx = cp.arange(batch_size)[:, None, None, None]
+        y_coords = cp.arange(height)[None, :, None, None]
+        x_coords = cp.arange(width)[None, None, :, None]
+        candle_idx = cp.arange(seq_len)[None, None, None, :]
         
-        # Compute x_left and x_right for all candles at once - use int32
-        x_left_all = cp.maximum(0, candle_centers_broadcast - candle_width // 2).astype(cp.int32)
-        x_right_all = cp.minimum(width - 1, candle_centers_broadcast + candle_width // 2).astype(cp.int32)
+        # Broadcast to full shape
+        batch_grid = cp.broadcast_to(batch_idx, (batch_size, height, width, seq_len))
+        y_grid = cp.broadcast_to(y_coords, (batch_size, height, width, seq_len))
+        x_grid = cp.broadcast_to(x_coords, (batch_size, height, width, seq_len))
         
-        # Step 2: Optimized wick drawing with minimal loops - use int32
-        # Compute wick coordinates for all candles
-        wick_top = cp.minimum(highs_y, lows_y).astype(cp.int32)
-        wick_bottom = cp.maximum(highs_y, lows_y).astype(cp.int32)
+        # Expand candle coordinates to match grid
+        wick_top = cp.minimum(highs_y, lows_y)[:, None, None, :]
+        wick_bottom = cp.maximum(highs_y, lows_y)[:, None, None, :]
+        candle_x = candle_centers[None, None, None, :]
         
-        # Draw wicks using vectorized operations per candle
-        for candle_idx in range(seq_len):
-            x_center = candle_centers[candle_idx]
-            
-            # Get wick coordinates for this candle across all batches
-            wick_tops = wick_top[:, candle_idx]  # Shape: (batch_size,)
-            wick_bottoms = wick_bottom[:, candle_idx]  # Shape: (batch_size,)
-            
-            # Draw wicks for all batches at once using vectorized operations
-            for batch_idx in range(batch_size):
-                y_start = wick_tops[batch_idx]
-                y_end = wick_bottoms[batch_idx]
-                if y_end >= y_start:
-                    images_gpu[batch_idx, y_start:y_end+1, x_center] = 0.0
+        body_top = cp.minimum(opens_y, closes_y)[:, None, None, :]
+        body_bottom = cp.maximum(opens_y, closes_y)[:, None, None, :]
+        x_left = x_left_all[None, None, None, :]
+        x_right = x_right_all[None, None, None, :]
         
-        # Step 3: Optimized body drawing with minimal loops - use int32
-        # Determine bullish/bearish for all candles at once
-        is_bullish = closes_int >= opens_int  # Shape: (batch_size, seq_len)
+        # Create masks for all pixels at once
+        wick_mask = (y_grid >= wick_top) & (y_grid <= wick_bottom) & (x_grid == candle_x)
+        body_mask = (y_grid >= body_top) & (y_grid <= body_bottom) & \
+                    (x_grid >= x_left) & (x_grid <= x_right)
+        
+        # Determine colors
+        is_bullish = (closes >= opens)[:, None, None, :]
         body_colors = cp.where(is_bullish, bullish_color, bearish_color)
         
-        # Compute body coordinates - use int32
-        body_top = cp.minimum(opens_y, closes_y).astype(cp.int32)
-        body_bottom = cp.maximum(opens_y, closes_y).astype(cp.int32)
+        # Apply wicks (black) - any candle with wick at this pixel
+        images_gpu[wick_mask.any(axis=3)] = 0.0
         
-        # Draw bodies using vectorized operations per candle
-        for candle_idx in range(seq_len):
-            # Get coordinates for this candle
-            body_tops = body_top[:, candle_idx]  # Shape: (batch_size,)
-            body_bottoms = body_bottom[:, candle_idx]  # Shape: (batch_size,)
-            x_starts = x_left_all[:, candle_idx]  # Shape: (batch_size,)
-            x_ends = x_right_all[:, candle_idx]  # Shape: (batch_size,)
-            colors = body_colors[:, candle_idx]  # Shape: (batch_size,)
-            
-            # Draw bodies for all batches at once
-            for batch_idx in range(batch_size):
-                y_start = body_tops[batch_idx]
-                y_end = body_bottoms[batch_idx]
-                x_start = x_starts[batch_idx]
-                x_end = x_ends[batch_idx]
-                color = colors[batch_idx]
-                
-                if y_start == y_end:  # Doji
-                    images_gpu[batch_idx, y_start, x_start:x_end+1] = 0.0
-                else:
-                    images_gpu[batch_idx, y_start:y_end+1, x_start:x_end+1] = color
+        # Apply bodies with colors - weighted by number of overlapping candles
+        body_color_sum = (body_mask * body_colors).sum(axis=3)
+        body_count = body_mask.sum(axis=3)
+        body_pixels = body_count > 0
+        images_gpu[body_pixels] = body_color_sum[body_pixels] / body_count[body_pixels]
         
-        # Transfer back to CPU
         return images_gpu.get()
 
     def render_batch_gpu(
