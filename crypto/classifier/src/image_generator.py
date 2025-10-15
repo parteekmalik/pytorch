@@ -38,24 +38,17 @@ def create_images_from_data(
     
     storage_format = storage_config['format'].lower()
     
-    from .data_loader import create_price_sequences
+    from .data_loader import create_price_sequences, create_ohlc_sequences
     
-    # Filter to only keep 'Close' column if DataFrame
-    if isinstance(data, pd.DataFrame):
-        if 'Close' in data.columns:
-            data = data[['Close']]
-        else:
-            data = pd.DataFrame()  # Empty if Close not available
-    
-    # Check if we have data to work with
+    # Check if we have OHLC data to work with
     if isinstance(data, pd.DataFrame):
         if data.empty or len(data.columns) == 0:
-            raise ValueError("No 'Close' price data available")
-        closing_prices = data.iloc[:, 0].values
-    else:  # Series case
-        closing_prices = data.values
+            raise ValueError("No OHLC data available")
+        ohlc_data = data.values  # Shape: (n_samples, 4) with [Open, High, Low, Close]
+    else:  # Series case (shouldn't happen with OHLC)
+        raise ValueError("Expected DataFrame with OHLC columns, got Series")
     
-    sequences = create_price_sequences(closing_prices, seq_len)
+    sequences = create_ohlc_sequences(ohlc_data, seq_len)
     
     renderer = Renderer()
     
@@ -156,7 +149,7 @@ def _create_images_storage(
             batch_sequences = sequences[start_idx:end_idx]
             
             # Render entire batch on GPU in parallel (vectorized)
-            images = renderer.render_batch_gpu(batch_sequences, resolution, line_width)
+            images = renderer.render_candlestick_batch_gpu(batch_sequences, resolution, candle_width_ratio=0.8)
             
             writer.write_batch(images, batch_sequences)
             

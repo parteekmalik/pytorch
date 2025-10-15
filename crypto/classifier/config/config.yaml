@@ -7,11 +7,14 @@ data:
   end_date: '2020-01'
 
 image:
-  seq_len: 100
-  line_width: 3
+  seq_len: 100  # Number of candles per image
+  candle_width_ratio: 0.8  # 0.0-1.0, how wide candles are
   resolution:
     width: 800
     height: 500
+  colors:
+    bullish: 0.2  # Dark gray for bullish candles
+    bearish: 0.0  # Black for bearish candles
   rendering:
     mode: gpu
     gpu_batch_size: 1000

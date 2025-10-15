@@ -14,6 +14,27 @@ from .utils import setup_logger
 logger = setup_logger(__name__)
 
 
+def create_ohlc_sequences(ohlc_data: np.ndarray, seq_len: int) -> np.ndarray:
+    """
+    Create sequences of OHLC data for candlestick rendering.
+    
+    Args:
+        ohlc_data: 2D array (n_samples, 4) with [Open, High, Low, Close]
+        seq_len: Number of candles per sequence
+        
+    Returns:
+        3D array (n_sequences, seq_len, 4) with OHLC data
+    """
+    n_samples = len(ohlc_data)
+    n_sequences = n_samples - seq_len + 1
+    
+    sequences = np.zeros((n_sequences, seq_len, 4))
+    for i in range(n_sequences):
+        sequences[i] = ohlc_data[i:i + seq_len]
+    
+    return sequences
+
+
 def create_price_sequences(price_data: np.ndarray, seq_len: int) -> np.ndarray:
     """
     Create sliding window sequences from price data.
@@ -161,10 +182,11 @@ def download_crypto_data(
         
         combined_df = pd.concat(all_data, ignore_index=True)
         
-        # Return only Close price column
-        result = combined_df['Close']
+        # Return OHLC data for candlestick charts
+        ohlc_columns = ['Open', 'High', 'Low', 'Close']
+        result = combined_df[ohlc_columns]
         
-        logger.info(f"Downloaded {len(result)} data points with columns: ['Close']")
+        logger.info(f"Downloaded {len(result)} data points with columns: {ohlc_columns}")
         return result
         
     except Exception as e:
