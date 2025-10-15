@@ -18,7 +18,7 @@ image:
     bearish: 0.0  # Black for bearish candles
   rendering:
     mode: gpu
-    gpu_batch_size: 1000
+    gpu_batch_size: 2500
 
 paths:
   raw_data: data/raw
