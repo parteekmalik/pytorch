@@ -80,12 +80,18 @@ Edit `config/config.yaml` to customize:
 
 #### Testing with Limited Sequences
 
-For quick testing, limit the number of sequences generated:
+For quick testing, limit the data downloaded and processed:
 
 ```yaml
 data:
-  max_sequences: 1000 # Generate only 1000 images instead of 44k+
+  max_sequences: 1000 # Download only enough data for 1000 sequences
 ```
+
+This approach is more efficient as it:
+
+- Downloads less data from Binance
+- Uses less memory during processing
+- Generates fewer sequences from the start
 
 #### Full Dataset Processing
 

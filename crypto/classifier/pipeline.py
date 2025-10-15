@@ -61,6 +61,9 @@ def run_pipeline(config_path: str = 'config/config.yaml'):
         )
         logger.info(f"Downloaded {len(data)} data points")
         
+        logger.info("Step 2: Generating images from price sequences...")
+        image_config = config['image']
+        
         # Apply max_sequences limit if specified (limit data before processing)
         max_sequences = data_config.get('max_sequences', None)
         if max_sequences is not None and max_sequences > 0:
@@ -70,9 +73,6 @@ def run_pipeline(config_path: str = 'config/config.yaml'):
             if len(data) > max_data_points:
                 data = data.iloc[:max_data_points]
                 logger.info(f"Limited data to {len(data)} points for {max_sequences} sequences")
-        
-        logger.info("Step 2: Generating images from price sequences...")
-        image_config = config['image']
         
         base_name = (
             f"crypto_{data_config['symbol']}_{data_config['interval']}_"
