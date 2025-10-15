@@ -151,8 +151,8 @@ class Renderer:
             
             # Apply bodies to all x-coordinates in the candle width
             for x in range(int(x_start), int(x_end) + 1):
-                # Broadcast colors: (1, batch) -> (height, batch) where mask is True
-                images_gpu[:, :, x] = cp.where(body_mask.T, colors[None, :], images_gpu[:, :, x])
+                # Broadcast colors: (batch, 1) -> (height, batch) where mask is True
+                images_gpu[:, :, x] = cp.where(body_mask.T, colors[:, None], images_gpu[:, :, x])
         
         return images_gpu.get()
 
