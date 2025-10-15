@@ -105,38 +105,64 @@ class Renderer:
         # Create output images (white background)
         images_gpu = cp.ones((batch_size, height, width), dtype=cp.float32)
         
-        # Render each candlestick
-        for batch_idx in range(batch_size):
-            for candle_idx in range(seq_len):
-                x_center = candle_centers[candle_idx]
-                x_left = max(0, x_center - candle_width // 2)
-                x_right = min(width - 1, x_center + candle_width // 2)
+        # Step 1: Pre-compute all candle positions (vectorized)
+        # Broadcast candle_centers to all batches: (batch_size, seq_len)
+        candle_centers_broadcast = cp.broadcast_to(candle_centers, (batch_size, seq_len))
+        
+        # Compute x_left and x_right for all candles at once
+        x_left_all = cp.maximum(0, candle_centers_broadcast - candle_width // 2)
+        x_right_all = cp.minimum(width - 1, candle_centers_broadcast + candle_width // 2)
+        
+        # Step 2: Optimized wick drawing with minimal loops
+        # Compute wick coordinates for all candles
+        wick_top = cp.minimum(highs_y, lows_y)
+        wick_bottom = cp.maximum(highs_y, lows_y)
+        
+        # Draw wicks using vectorized operations per candle
+        for candle_idx in range(seq_len):
+            x_center = candle_centers[candle_idx]
+            
+            # Get wick coordinates for this candle across all batches
+            wick_tops = wick_top[:, candle_idx]  # Shape: (batch_size,)
+            wick_bottoms = wick_bottom[:, candle_idx]  # Shape: (batch_size,)
+            
+            # Draw wicks for all batches at once using vectorized operations
+            for batch_idx in range(batch_size):
+                y_start = wick_tops[batch_idx]
+                y_end = wick_bottoms[batch_idx]
+                if y_end >= y_start:
+                    images_gpu[batch_idx, y_start:y_end+1, x_center] = 0.0
+        
+        # Step 3: Optimized body drawing with minimal loops
+        # Determine bullish/bearish for all candles at once
+        is_bullish = closes >= opens  # Shape: (batch_size, seq_len)
+        body_colors = cp.where(is_bullish, bullish_color, bearish_color)
+        
+        # Compute body coordinates
+        body_top = cp.minimum(opens_y, closes_y)
+        body_bottom = cp.maximum(opens_y, closes_y)
+        
+        # Draw bodies using vectorized operations per candle
+        for candle_idx in range(seq_len):
+            # Get coordinates for this candle
+            body_tops = body_top[:, candle_idx]  # Shape: (batch_size,)
+            body_bottoms = body_bottom[:, candle_idx]  # Shape: (batch_size,)
+            x_starts = x_left_all[:, candle_idx]  # Shape: (batch_size,)
+            x_ends = x_right_all[:, candle_idx]  # Shape: (batch_size,)
+            colors = body_colors[:, candle_idx]  # Shape: (batch_size,)
+            
+            # Draw bodies for all batches at once
+            for batch_idx in range(batch_size):
+                y_start = body_tops[batch_idx]
+                y_end = body_bottoms[batch_idx]
+                x_start = x_starts[batch_idx]
+                x_end = x_ends[batch_idx]
+                color = colors[batch_idx]
                 
-                open_y = opens_y[batch_idx, candle_idx]
-                high_y = highs_y[batch_idx, candle_idx]
-                low_y = lows_y[batch_idx, candle_idx]
-                close_y = closes_y[batch_idx, candle_idx]
-                
-                # Determine candle color (bullish or bearish)
-                is_bullish = closes[batch_idx, candle_idx] >= opens[batch_idx, candle_idx]
-                body_color = bullish_color if is_bullish else bearish_color
-                
-                # Draw wick (high to low) - thin vertical line at center
-                wick_top = min(high_y, low_y)
-                wick_bottom = max(high_y, low_y)
-                images_gpu[batch_idx, wick_top:wick_bottom+1, x_center] = 0.0
-                
-                # Draw body (open to close) - filled rectangle
-                body_top = min(open_y, close_y)
-                body_bottom = max(open_y, close_y)
-                
-                # Handle doji (open == close)
-                if body_top == body_bottom:
-                    # Draw thin horizontal line for doji
-                    images_gpu[batch_idx, body_top, x_left:x_right+1] = 0.0
+                if y_start == y_end:  # Doji
+                    images_gpu[batch_idx, y_start, x_start:x_end+1] = 0.0
                 else:
-                    # Draw filled rectangle for body
-                    images_gpu[batch_idx, body_top:body_bottom+1, x_left:x_right+1] = body_color
+                    images_gpu[batch_idx, y_start:y_end+1, x_start:x_end+1] = color
         
         # Transfer back to CPU
         return images_gpu.get()
