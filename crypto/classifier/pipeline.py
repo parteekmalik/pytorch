@@ -83,7 +83,6 @@ def run_pipeline(config_path: str = 'config/config.yaml'):
             data=data,
             output_path=str(output_path),
             seq_len=image_config['seq_len'],
-            line_width=image_config['line_width'],
             resolution=image_config['resolution'],
             storage_config={'format': 'hdf5', 'mode': 'single'},
             metadata=metadata,

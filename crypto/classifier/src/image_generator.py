@@ -20,8 +20,6 @@ def create_images_from_data(
     data: pd.DataFrame,
     output_path: str,
     seq_len: int = 100,
-    line_width: int = 3,
-    batch_size: int = 10000,
     resolution: Optional[Dict[str, int]] = None,
     storage_config: Optional[Dict] = None,
     metadata: Optional[Dict] = None,
