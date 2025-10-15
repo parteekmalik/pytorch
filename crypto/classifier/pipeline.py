@@ -51,14 +51,19 @@ def run_pipeline(config_path: str = 'config/config.yaml'):
         
         # Resolve cache_dir for data download
         cache_dir = base_dir / config['paths']['raw_data']
+        # Get decimal precision from config
+        decimal_precision = data_config.get('decimal_precision', 100)
+        
         data = download_crypto_data(
             symbol=data_config['symbol'],
             interval=data_config['interval'],
             start_date_str=data_config['start_date'],
             end_date_str=data_config['end_date'],
-            cache_dir=str(cache_dir)
+            cache_dir=str(cache_dir),
+            decimal_precision=decimal_precision
         )
         logger.info(f"Downloaded {len(data)} data points")
+        logger.info(f"Data converted to int32 with decimal_precision={decimal_precision}")
         
         logger.info("Step 2: Generating images from price sequences...")
         image_config = config['image']

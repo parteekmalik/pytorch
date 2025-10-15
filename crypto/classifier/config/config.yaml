@@ -5,6 +5,7 @@ data:
   interval: 1m
   start_date: '2020-01'
   end_date: '2020-01'
+  decimal_precision: 100  # Power of 10 for price conversion (100 = 2 decimals for BTC)
 
 image:
   seq_len: 100  # Number of candles per image
