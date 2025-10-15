@@ -77,7 +77,7 @@ class ImageStorageWriter:
         
         height = self.resolution['height']
         seq_len = self.metadata.get('seq_len', 100)
-        width = seq_len * 8  # Auto-calculate width for OHLC bars (8 pixels per bar)
+        width = seq_len * 4  # Auto-calculate width for OHLC bars (4 pixels per bar)
         
         max_shape = (None, height, width) if self.mode == 'single' else (self.images_per_file, height, width)
         

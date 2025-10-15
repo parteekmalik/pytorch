@@ -127,7 +127,7 @@ hdf5_file = create_images_from_data(
     data=data,
     output_path='crypto/classifier/data/processed/my_images.h5',
     seq_len=100,
-    resolution={'height': 500},  # Width auto-calculated: seq_len * 8
+    resolution={'height': 500},  # Width auto-calculated: seq_len * 4
     storage_config={'format': 'hdf5', 'mode': 'single', 'images_per_file': 50000},
     metadata={'symbol': 'BTCUSDT', 'interval': '1m'}
 )
@@ -163,16 +163,16 @@ models = list_models('crypto/classifier/models')
 The pipeline generates OHLC (Open, High, Low, Close) bar charts with a fixed pixel layout:
 
 ### Bar Structure
-Each OHLC bar uses exactly **8 pixels** horizontally:
-- **Pixels 0-2**: Open tick (3-pixel horizontal line extending left)
-- **Pixel 3**: High-Low line (vertical line from low to high price)  
-- **Pixels 4-6**: Close tick (3-pixel horizontal line extending right)
-- **Pixel 7**: Gap (empty space for separation)
+Each OHLC bar uses exactly **4 pixels** horizontally:
+- **Pixel 0**: High-Low vertical line
+- **Pixel 1**: Open price (single pixel)
+- **Pixel 2**: Close price (single pixel)
+- **Pixel 3**: Gap (empty space for separation)
 
 ### Image Dimensions
 - **Height**: Configurable (default: 500 pixels)
-- **Width**: Auto-calculated as `seq_len * 8` pixels
-- **Example**: 100 bars = 800 pixels wide
+- **Width**: Auto-calculated as `seq_len * 4` pixels
+- **Example**: 100 bars = 400 pixels wide
 
 ### Visual Features
 - **White background** (pixel value: 1.0)

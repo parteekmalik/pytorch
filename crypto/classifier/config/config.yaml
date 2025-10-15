@@ -9,7 +9,7 @@ data:
 image:
   seq_len: 100  # Number of bars per image
   resolution:
-    height: 500  # Width auto-calculated: seq_len * 8
+    height: 500  # Width auto-calculated: seq_len * 4
   colors:
     bullish: 0.2  # Dark gray for bullish candles
     bearish: 0.0  # Black for bearish candles

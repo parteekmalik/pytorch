@@ -49,100 +49,75 @@ class Renderer:
     def render_ohlc_batch_gpu(
         self,
         ohlc_sequences: np.ndarray,
-        resolution: Dict[str, int],
-        bullish_color: float = 0.2,
-        bearish_color: float = 0.0
+        resolution: Dict[str, int]
     ) -> np.ndarray:
         """
-        OHLC Bar Chart GPU rendering with fixed 4-pixel layout.
-        Each bar uses 4 pixels: 1px Open tick, 1px High-Low line, 1px Close tick, 1px gap.
+        OHLC Bar Chart GPU rendering with 4-pixel layout.
+        Pixel 0: High-Low line, Pixel 1: Open, Pixel 2: Close, Pixel 3: Gap
+        Each image is independently scaled to its own price range.
         """
         if not self.gpu_available:
             raise RuntimeError("GPU batch rendering requires GPU")
         
         batch_size, seq_len, _ = ohlc_sequences.shape
         height = resolution['height']
-        width = seq_len * 8  # Auto-calculate width: 8 pixels per bar
+        width = seq_len * 4  # 4 pixels per bar
         
-        # Move to GPU as float32
-        ohlc_gpu = cp.asarray(ohlc_sequences, dtype=cp.float32)  # (batch, seq_len, 4)
-        
-        # Reshape for efficient access: (batch * seq_len, 4)
-        ohlc_flat = ohlc_gpu.reshape(-1, 4)
-        
-        # Create batch indices for vectorized access
-        batch_indices = cp.arange(batch_size)[:, None]  # (batch, 1)
-        bar_indices = cp.arange(seq_len)[None, :]    # (1, seq_len)
-        
-        # Vectorized indexing: all batches × all bars
-        flat_indices = batch_indices * seq_len + bar_indices  # (batch, seq_len)
-        
-        # Extract OHLC using fancy indexing (NO COPYING!)
-        opens = ohlc_flat[flat_indices, 0]    # (batch, seq_len)
-        highs = ohlc_flat[flat_indices, 1]    # (batch, seq_len)
-        lows = ohlc_flat[flat_indices, 2]     # (batch, seq_len)
-        closes = ohlc_flat[flat_indices, 3]   # (batch, seq_len)
-        
-        # Vectorized scaling to pixel coordinates
-        all_prices = cp.stack([opens, highs, lows, closes], axis=-1).reshape(batch_size, -1)
-        price_min = all_prices.min(axis=1, keepdims=True)
-        price_max = all_prices.max(axis=1, keepdims=True)
-        price_range = cp.maximum(price_max - price_min, 1e-8)
-        
-        # Scale to pixels (float32 operations)
-        scale_factor = (height - 1) / price_range
-        opens_y = ((price_max - opens) * scale_factor).astype(cp.int32)
-        highs_y = ((price_max - highs) * scale_factor).astype(cp.int32)
-        lows_y = ((price_max - lows) * scale_factor).astype(cp.int32)
-        closes_y = ((price_max - closes) * scale_factor).astype(cp.int32)
+        # Move to GPU
+        ohlc_gpu = cp.asarray(ohlc_sequences, dtype=cp.float32)
         
         # Create output images (white background)
         images_gpu = cp.ones((batch_size, height, width), dtype=cp.float32)
         
-        # VECTORIZED OHLC BAR RENDERING
-        # Process all bars for all batches using GPU parallelism
-        
-        # Calculate bar positions (fixed 8-pixel layout)
-        bar_x_positions = cp.arange(seq_len) * 8  # Each bar starts at x = bar_idx * 8
-        
-        # Compute colors (vectorized)
-        is_bullish = closes >= opens  # (batch, seq_len)
-        bar_colors = cp.where(is_bullish, bullish_color, bearish_color)
-        
-        # OPTIMIZED DRAWING: Process bars with minimal loops
-        for bar_idx in range(seq_len):
-            x_base = bar_x_positions[bar_idx]
+        # Process each image independently
+        for batch_idx in range(batch_size):
+            # Get OHLC data for this image only
+            opens = ohlc_gpu[batch_idx, :, 0]   # (seq_len,)
+            highs = ohlc_gpu[batch_idx, :, 1]   # (seq_len,)
+            lows = ohlc_gpu[batch_idx, :, 2]    # (seq_len,)
+            closes = ohlc_gpu[batch_idx, :, 3]  # (seq_len,)
             
-            # Extract coordinates for this bar across all batches
-            open_y = opens_y[:, bar_idx]       # (batch,)
-            high_y = highs_y[:, bar_idx]       # (batch,)
-            low_y = lows_y[:, bar_idx]         # (batch,)
-            close_y = closes_y[:, bar_idx]     # (batch,)
-            colors = bar_colors[:, bar_idx]    # (batch,)
+            # Find min/max for THIS sequence only
+            all_prices = cp.concatenate([opens, highs, lows, closes])
+            price_min = all_prices.min()
+            price_max = all_prices.max()
+            price_range = cp.maximum(price_max - price_min, 1e-8)
             
-            # VECTORIZED BAR DRAWING using broadcasting
+            # Scale to pixel coordinates for THIS image
+            scale_factor = (height - 1) / price_range
+            opens_y = ((price_max - opens) * scale_factor).astype(cp.int32)
+            highs_y = ((price_max - highs) * scale_factor).astype(cp.int32)
+            lows_y = ((price_max - lows) * scale_factor).astype(cp.int32)
+            closes_y = ((price_max - closes) * scale_factor).astype(cp.int32)
             
-            # 1. Draw High-Low line (center pixel, x_base + 3)
-            # Create y-coordinate grid
-            y_coords = cp.arange(height)[:, None]  # (height, 1)
+            # Clip to bounds
+            opens_y = cp.clip(opens_y, 0, height - 1)
+            highs_y = cp.clip(highs_y, 0, height - 1)
+            lows_y = cp.clip(lows_y, 0, height - 1)
+            closes_y = cp.clip(closes_y, 0, height - 1)
             
-            # Broadcast comparison: (height, 1) vs (1, batch) -> (height, batch)
-            hl_mask = (y_coords >= cp.minimum(high_y, low_y)[None, :]) & (y_coords <= cp.maximum(high_y, low_y)[None, :])
-            
-            # Apply High-Low line to all batches simultaneously
-            images_gpu[:, :, x_base + 3] = cp.where(hl_mask.T, 0.0, images_gpu[:, :, x_base + 3])
-            
-            # 2. Draw Open tick (3-pixel horizontal line, x_base + 0, 1, 2)
-            # Apply Open tick to all batches
-            for x in range(3):
-                images_gpu[:, open_y, x_base + x] = 0.0
-            
-            # 3. Draw Close tick (3-pixel horizontal line, x_base + 4, 5, 6)
-            # Apply Close tick to all batches
-            for x in range(3):
-                images_gpu[:, close_y, x_base + 4 + x] = 0.0
-            
-            # Note: x_base + 7 is the gap (remains white/1.0)
+            # Draw each bar
+            for bar_idx in range(seq_len):
+                x_base = bar_idx * 4
+                
+                # Get scalar coordinates
+                open_y = int(opens_y[bar_idx])
+                high_y = int(highs_y[bar_idx])
+                low_y = int(lows_y[bar_idx])
+                close_y = int(closes_y[bar_idx])
+                
+                # Pixel 0: High-Low vertical line
+                y_start = min(high_y, low_y)
+                y_end = max(high_y, low_y)
+                images_gpu[batch_idx, y_start:y_end+1, x_base] = 0.0
+                
+                # Pixel 1: Open (single pixel)
+                images_gpu[batch_idx, open_y, x_base + 1] = 0.0
+                
+                # Pixel 2: Close (single pixel)
+                images_gpu[batch_idx, close_y, x_base + 2] = 0.0
+                
+                # Pixel 3: Gap (stays white)
         
         return images_gpu.get()
 

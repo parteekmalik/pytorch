@@ -51,7 +51,7 @@ def create_images_from_data(
     logger.info(f"Generating {len(sequences)} images")
     logger.info("Rendering mode: GPU")
     logger.info(f"Storage format: hdf5 ({storage_config['mode']} mode)")
-    logger.info(f"Resolution: {seq_len * 8}x{resolution['height']} (width auto-calculated)")
+    logger.info(f"Resolution: {seq_len * 4}x{resolution['height']} (width auto-calculated)")
     
     if metadata is None:
         metadata = {}
@@ -60,8 +60,8 @@ def create_images_from_data(
     metadata['rendering_mode'] = 'gpu'
     metadata['chart_type'] = 'ohlc_bar'
     
-    # Calculate width for OHLC bars (8 pixels per bar)
-    width = seq_len * 8
+    # Calculate width for OHLC bars (4 pixels per bar)
+    width = seq_len * 4
     resolution_with_width = {'width': width, 'height': resolution['height']}
     
     return _create_images_storage(
