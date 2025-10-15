@@ -29,12 +29,10 @@ def create_images_from_data(
         resolution = {'width': 800, 'height': 500}
     
     if storage_config is None:
-        storage_config = {'format': 'jpeg', 'mode': 'single', 'images_per_file': 50000}
+        storage_config = {'format': 'hdf5', 'mode': 'single', 'images_per_file': 50000}
     
     if rendering_config is None:
         rendering_config = {'mode': 'gpu', 'gpu_batch_size': 1000}
-    
-    storage_format = storage_config['format'].lower()
     
     from .data_loader import create_price_sequences, create_ohlc_sequences
     
@@ -52,7 +50,7 @@ def create_images_from_data(
     
     logger.info(f"Generating {len(sequences)} images")
     logger.info("Rendering mode: GPU")
-    logger.info(f"Storage format: {storage_format} ({storage_config['mode']} mode)")
+    logger.info(f"Storage format: hdf5 ({storage_config['mode']} mode)")
     logger.info(f"Resolution: {resolution['width']}x{resolution['height']}")
     
     if metadata is None:
@@ -62,57 +60,10 @@ def create_images_from_data(
     metadata['rendering_mode'] = 'gpu'
     metadata['chart_type'] = 'candlestick'
     
-    if storage_format == 'jpeg':
-        return _create_images_jpeg(
-            sequences, output_path, resolution, batch_size, renderer
-        )
-    else:
-        return _create_images_storage(
-            sequences, output_path, resolution,
-            storage_config, metadata, renderer, rendering_config
-        )
-
-
-def _create_images_jpeg(
-    sequences: np.ndarray,
-    images_folder: str,
-    resolution: Dict[str, int],
-    batch_size: int,
-    renderer: Renderer
-) -> str:
-    """Create images as individual JPEG files using specified renderer."""
-    if os.path.exists(images_folder) and os.listdir(images_folder):
-        logger.info(f"Images already exist in {images_folder}, skipping generation")
-        return images_folder
-    
-    os.makedirs(images_folder, exist_ok=True)
-    
-    logger.info("Using GPU batch rendering for JPEG generation")
-    gpu_batch_size = 1000  # Default batch size
-    
-    for start_idx in range(0, len(sequences), gpu_batch_size):
-        end_idx = min(start_idx + gpu_batch_size, len(sequences))
-        batch_sequences = sequences[start_idx:end_idx]
-        
-        # Render entire batch on GPU in parallel
-        batch_images = renderer.render_batch_gpu(batch_sequences, resolution, line_width)
-        
-        # Save each image as JPEG using PIL instead of matplotlib
-        from PIL import Image
-        for i, img in enumerate(batch_images):
-            img_idx = start_idx + i
-            img_filename = f'price_pattern_{img_idx:06d}.jpg'
-            img_path = os.path.join(images_folder, img_filename)
-            
-            # Convert normalized float image to uint8
-            img_uint8 = (np.clip(img, 0, 1) * 255).astype(np.uint8)
-            pil_img = Image.fromarray(img_uint8, mode='L')
-            pil_img.save(img_path, 'JPEG', quality=95)
-        
-        logger.info(f'Processed {end_idx}/{len(sequences)} images (GPU)')
-    
-    logger.info(f"Created {len(sequences)} JPEG images in {images_folder}")
-    return images_folder
+    return _create_images_storage(
+        sequences, output_path, resolution,
+        storage_config, metadata, renderer, rendering_config
+    )
 
 
 def _create_images_storage(

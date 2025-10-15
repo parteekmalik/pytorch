@@ -1,6 +1,6 @@
 """
-Efficient image storage module supporting multiple formats (HDF5, NPZ, Zarr).
-Handles single file or batch file storage to avoid millions of individual files.
+Efficient HDF5 image storage module.
+Handles single file storage to avoid millions of individual files.
 """
 import h5py
 import numpy as np
@@ -11,13 +11,6 @@ from pathlib import Path
 from .utils import setup_logger, ensure_dir
 
 logger = setup_logger(__name__)
-
-try:
-    import zarr
-    ZARR_AVAILABLE = True
-except ImportError:
-    ZARR_AVAILABLE = False
-    logger.warning("Zarr not available. Install with: pip install zarr")
 
 
 class ImageStorageWriter:
@@ -44,13 +37,8 @@ class ImageStorageWriter:
         
         ensure_dir(os.path.dirname(output_path) if '.' in os.path.basename(output_path) else output_path)
         
-        if self.storage_format == 'hdf5':
-            self._init_hdf5()
-        elif self.storage_format == 'zarr':
-            self._init_zarr()
-        elif self.storage_format == 'npz':
-            self.image_buffer = []
-            self.sequence_buffer = []
+        # Always use HDF5
+        self._init_hdf5()
     
     def _get_file_path(self, file_idx: int = 0) -> str:
         """Get file path for batch mode or single mode."""
@@ -103,12 +91,13 @@ class ImageStorageWriter:
         )
         
         seq_len = self.metadata.get('seq_len', 100)
+        # OHLC sequences have shape (seq_len, 4) for [Open, High, Low, Close]
         self.hdf5_sequences = self.hdf5_file.create_dataset(
             'sequences',
-            shape=(0, seq_len),
-            maxshape=(None, seq_len) if self.mode == 'single' else (self.images_per_file, seq_len),
+            shape=(0, seq_len, 4),
+            maxshape=(None, seq_len, 4) if self.mode == 'single' else (self.images_per_file, seq_len, 4),
             dtype='float32',
-            chunks=(1, seq_len),
+            chunks=(1, seq_len, 4),
             compression='gzip',
             compression_opts=4
         )
@@ -124,51 +113,9 @@ class ImageStorageWriter:
         
         self.images_in_current_file = 0
     
-    def _init_zarr(self):
-        """Initialize Zarr storage."""
-        if not ZARR_AVAILABLE:
-            raise ImportError("Zarr is not installed. Install with: pip install zarr")
-        
-        file_path = self._get_file_path(self.current_file_idx)
-        logger.info(f"Creating Zarr file: {file_path}")
-        
-        self.zarr_root = zarr.open(file_path, mode='w')
-        
-        height = self.resolution['height']
-        width = self.resolution['width']
-        seq_len = self.metadata.get('seq_len', 100)
-        
-        self.zarr_images = self.zarr_root.create_dataset(
-            'images',
-            shape=(0, height, width),
-            chunks=(1, height, width),
-            dtype='float32',
-            compressor=zarr.Blosc(cname='zstd', clevel=3)
-        )
-        
-        self.zarr_sequences = self.zarr_root.create_dataset(
-            'sequences',
-            shape=(0, seq_len),
-            chunks=(1, seq_len),
-            dtype='float32',
-            compressor=zarr.Blosc(cname='zstd', clevel=3)
-        )
-        
-        self.zarr_root.attrs.update(self.metadata)
-        self.zarr_root.attrs['resolution'] = [
-            self.resolution['width'],
-            self.resolution['height']
-        ]
-        self.zarr_root.attrs['created_at'] = datetime.now().isoformat()
-    
     def write_batch(self, images: List[np.ndarray], sequences: List[np.ndarray]):
-        """Write a batch of images and sequences."""
-        if self.storage_format == 'hdf5':
-            self._write_batch_hdf5(images, sequences)
-        elif self.storage_format == 'zarr':
-            self._write_batch_zarr(images, sequences)
-        elif self.storage_format == 'npz':
-            self._write_batch_npz(images, sequences)
+        """Write a batch of images and sequences to HDF5."""
+        self._write_batch_hdf5(images, sequences)
     
     def _write_batch_hdf5(self, images: List[np.ndarray], sequences: List[np.ndarray]):
         """Write batch to HDF5."""
@@ -203,63 +150,11 @@ class ImageStorageWriter:
         self.total_images += batch_size
         self.hdf5_file.flush()
     
-    def _write_batch_zarr(self, images: List[np.ndarray], sequences: List[np.ndarray]):
-        """Write batch to Zarr."""
-        batch_size = len(images)
-        current_size = self.zarr_images.shape[0]
-        
-        self.zarr_images.resize((current_size + batch_size, *self.zarr_images.shape[1:]))
-        self.zarr_sequences.resize((current_size + batch_size, *self.zarr_sequences.shape[1:]))
-        
-        for i, (img, seq) in enumerate(zip(images, sequences)):
-            self.zarr_images[current_size + i] = img
-            self.zarr_sequences[current_size + i] = seq
-        
-        self.total_images += batch_size
-    
-    def _write_batch_npz(self, images: List[np.ndarray], sequences: List[np.ndarray]):
-        """Buffer data for NPZ (written on close)."""
-        self.image_buffer.extend(images)
-        self.sequence_buffer.extend(sequences)
-        self.total_images += len(images)
-        
-        if self.mode == 'batch' and len(self.image_buffer) >= self.images_per_file:
-            self._flush_npz()
-    
-    def _flush_npz(self):
-        """Flush NPZ buffer to file."""
-        if not self.image_buffer:
-            return
-        
-        file_path = self._get_file_path(self.current_file_idx)
-        logger.info(f"Saving NPZ file: {file_path}")
-        
-        np.savez_compressed(
-            file_path,
-            images=np.array(self.image_buffer),
-            sequences=np.array(self.sequence_buffer),
-            **self.metadata,
-            resolution=np.array([
-                self.resolution['width'],
-                self.resolution['height']
-            ]),
-            created_at=datetime.now().isoformat()
-        )
-        
-        self.image_buffer = []
-        self.sequence_buffer = []
-        self.current_file_idx += 1
-    
     def close(self):
-        """Close the storage writer."""
-        if self.storage_format == 'hdf5' and self.hdf5_file is not None:
+        """Close the HDF5 storage writer."""
+        if self.hdf5_file is not None:
             self.hdf5_file.close()
             logger.info(f"Closed HDF5 file. Total images: {self.total_images}")
-        elif self.storage_format == 'npz' and self.image_buffer:
-            self._flush_npz()
-            logger.info(f"Saved NPZ files. Total images: {self.total_images}")
-        elif self.storage_format == 'zarr':
-            logger.info(f"Closed Zarr storage. Total images: {self.total_images}")
 
 
 def load_images_from_storage(
@@ -268,26 +163,17 @@ def load_images_from_storage(
     indices: Optional[Union[List[int], slice]] = None
 ) -> Tuple[np.ndarray, np.ndarray, Dict]:
     """
-    Load images from storage file.
+    Load images from HDF5 storage file.
     
     Args:
-        file_path: Path to storage file
-        storage_format: Format type ('hdf5', 'zarr', 'npz')
+        file_path: Path to HDF5 file
+        storage_format: Format type (must be 'hdf5')
         indices: Optional indices to load (default: load all)
     
     Returns:
         Tuple of (images, sequences, metadata)
     """
-    storage_format = storage_format.lower()
-    
-    if storage_format == 'hdf5':
-        return _load_hdf5(file_path, indices)
-    elif storage_format == 'zarr':
-        return _load_zarr(file_path, indices)
-    elif storage_format == 'npz':
-        return _load_npz(file_path, indices)
-    else:
-        raise ValueError(f"Unsupported format: {storage_format}")
+    return _load_hdf5(file_path, indices)
 
 
 def _load_hdf5(file_path: str, indices: Optional[Union[List[int], slice]]) -> Tuple[np.ndarray, np.ndarray, Dict]:
@@ -305,82 +191,23 @@ def _load_hdf5(file_path: str, indices: Optional[Union[List[int], slice]]) -> Tu
     return images, sequences, metadata
 
 
-def _load_zarr(file_path: str, indices: Optional[Union[List[int], slice]]) -> Tuple[np.ndarray, np.ndarray, Dict]:
-    """Load from Zarr storage."""
-    if not ZARR_AVAILABLE:
-        raise ImportError("Zarr is not installed")
-    
-    root = zarr.open(file_path, mode='r')
-    
-    if indices is None:
-        images = root['images'][:]
-        sequences = root['sequences'][:]
-    else:
-        images = root['images'][indices]
-        sequences = root['sequences'][indices]
-    
-    metadata = dict(root.attrs)
-    
-    return images, sequences, metadata
-
-
-def _load_npz(file_path: str, indices: Optional[Union[List[int], slice]]) -> Tuple[np.ndarray, np.ndarray, Dict]:
-    """Load from NPZ file."""
-    data = np.load(file_path, allow_pickle=True)
-    
-    images = data['images']
-    sequences = data['sequences']
-    
-    if indices is not None:
-        images = images[indices]
-        sequences = sequences[indices]
-    
-    metadata = {key: data[key].item() if data[key].ndim == 0 else data[key] 
-                for key in data.files if key not in ['images', 'sequences']}
-    
-    return images, sequences, metadata
-
-
 def get_storage_info(file_path: str, storage_format: str) -> Dict:
     """
-    Get information about stored images.
+    Get information about stored HDF5 images.
     
     Args:
-        file_path: Path to storage file
-        storage_format: Format type
+        file_path: Path to HDF5 file
+        storage_format: Format type (must be 'hdf5')
     
     Returns:
         Dictionary with storage information
     """
-    storage_format = storage_format.lower()
-    
-    if storage_format == 'hdf5':
-        with h5py.File(file_path, 'r') as f:
-            return {
-                'num_images': f['images'].shape[0],
-                'image_shape': f['images'].shape[1:],
-                'sequence_length': f['sequences'].shape[1],
-                'file_size_mb': os.path.getsize(file_path) / (1024 * 1024),
-                'metadata': dict(f.attrs)
-            }
-    elif storage_format == 'zarr':
-        if not ZARR_AVAILABLE:
-            raise ImportError("Zarr is not installed")
-        root = zarr.open(file_path, mode='r')
+    with h5py.File(file_path, 'r') as f:
         return {
-            'num_images': root['images'].shape[0],
-            'image_shape': root['images'].shape[1:],
-            'sequence_length': root['sequences'].shape[1],
-            'metadata': dict(root.attrs)
+            'num_images': f['images'].shape[0],
+            'image_shape': f['images'].shape[1:],
+            'sequence_length': f['sequences'].shape[1],
+            'file_size_mb': os.path.getsize(file_path) / (1024 * 1024),
+            'metadata': dict(f.attrs)
         }
-    elif storage_format == 'npz':
-        data = np.load(file_path, allow_pickle=True)
-        return {
-            'num_images': data['images'].shape[0],
-            'image_shape': data['images'].shape[1:],
-            'sequence_length': data['sequences'].shape[1],
-            'file_size_mb': os.path.getsize(file_path) / (1024 * 1024)
-        }
-    else:
-        raise ValueError(f"Unsupported format: {storage_format}")
 
