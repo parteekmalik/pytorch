@@ -376,11 +376,11 @@ def get_storage_info(file_path: str, storage_format: str) -> Dict:
             image_shape = f['images'].shape[1:]
             sequence_length = f['sequences'].shape[1]
         
-            return {
+        return {
             'num_images': num_images,
             'image_shape': image_shape,
             'sequence_length': sequence_length,
-                'file_size_mb': os.path.getsize(file_path) / (1024 * 1024),
-                'metadata': dict(f.attrs)
+            'file_size_mb': os.path.getsize(file_path) / (1024 * 1024),
+            'metadata': dict(f.attrs)
         }
 
