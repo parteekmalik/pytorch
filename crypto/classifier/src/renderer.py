@@ -249,3 +249,50 @@ class Renderer:
         result = images_gpu.get()
         # logger.info(f"Completed rendering {batch_size} images")
         return result
+    
+    def render_ohlc_batch_coordinates(self, ohlc_sequences: np.ndarray) -> np.ndarray:
+        """
+        Render OHLC bars and return compressed Y-coordinate format.
+        
+        Args:
+            ohlc_sequences: (batch_size, seq_len, 4) OHLC data
+            
+        Returns:
+            Compressed coordinates: (batch_size, seq_len, 4) where each row is:
+            [opens_y, highs_y, lows_y, closes_y]
+        """
+        batch_size, seq_len, _ = ohlc_sequences.shape
+        height = self.height
+        
+        # Convert to CuPy
+        ohlc_gpu = cp.asarray(ohlc_sequences)
+        
+        # Extract OHLC components
+        opens = ohlc_gpu[:, :, 0]
+        highs = ohlc_gpu[:, :, 1]
+        lows = ohlc_gpu[:, :, 2]
+        closes = ohlc_gpu[:, :, 3]
+        
+        # Per-image scaling (same as render_ohlc_batch_gpu lines 82-85)
+        price_min = cp.min(ohlc_gpu, axis=(1, 2))
+        price_max = cp.max(ohlc_gpu, axis=(1, 2))
+        price_range = cp.maximum(price_max - price_min, 1e-8)
+        scale_factor = ((height - 1) / price_range)[:, None]
+        
+        # Scale to Y-coordinates (same as lines 92-95)
+        opens_y = ((price_max[:, None] - opens) * scale_factor).astype(cp.uint16)
+        highs_y = ((price_max[:, None] - highs) * scale_factor).astype(cp.uint16)
+        lows_y = ((price_max[:, None] - lows) * scale_factor).astype(cp.uint16)
+        closes_y = ((price_max[:, None] - closes) * scale_factor).astype(cp.uint16)
+        
+        # Clip coordinates
+        opens_y = cp.clip(opens_y, 0, height - 1)
+        highs_y = cp.clip(highs_y, 0, height - 1)
+        lows_y = cp.clip(lows_y, 0, height - 1)
+        closes_y = cp.clip(closes_y, 0, height - 1)
+        
+        # Stack into (batch_size, seq_len, 4) format
+        coordinates = cp.stack([opens_y, highs_y, lows_y, closes_y], axis=2)
+        
+        # Return as numpy (CPU) for storage
+        return cp.asnumpy(coordinates)

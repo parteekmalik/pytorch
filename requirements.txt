@@ -8,7 +8,6 @@ scikit-learn
 
 # Visualization and rendering
 matplotlib
-opencv-contrib-python
 
 # GPU acceleration
 cupy-cuda12x
@@ -29,4 +28,4 @@ jupyter
 ipython
 
 # Optional (for advanced features)
-zarr
+# zarr  # Removed - not using Zarr storage
