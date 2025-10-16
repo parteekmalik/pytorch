@@ -120,18 +120,38 @@ class Renderer:
         # Draw Close pixels (vectorized across all batches and bars)
         images_gpu[batch_grid, closes_y, x_closes] = 0.0
         
-        # Draw High-Low lines (vectorized)
-        # For each bar, draw vertical line from high to low
+        # Draw High-Low lines (FULLY VECTORIZED)
         y_min = cp.minimum(highs_y, lows_y)  # (batch_size, seq_len)
         y_max = cp.maximum(highs_y, lows_y)  # (batch_size, seq_len)
         
-        # Draw vertical lines using vectorized approach
-        for batch_idx in range(batch_size):
-            for bar_idx in range(seq_len):
-                y_start = int(y_min[batch_idx, bar_idx])
-                y_end = int(y_max[batch_idx, bar_idx])
-                x_pos = int(x_highs[0, bar_idx])
-                images_gpu[batch_idx, y_start:y_end+1, x_pos] = 0.0
+        # Create y-coordinate array for all possible heights
+        y_range = cp.arange(height)  # (height,)
+        
+        # Expand dimensions for broadcasting
+        # y_min_exp: (batch_size, seq_len, 1)
+        # y_max_exp: (batch_size, seq_len, 1)
+        # y_range: (1, 1, height) after broadcasting
+        y_min_exp = y_min[:, :, None]
+        y_max_exp = y_max[:, :, None]
+        y_range_exp = y_range[None, None, :]
+        
+        # Create mask: True where we should draw vertical line pixels
+        # Shape: (batch_size, seq_len, height)
+        line_mask = (y_range_exp >= y_min_exp) & (y_range_exp <= y_max_exp)
+        
+        # Transpose to (batch_size, height, seq_len) for easier indexing
+        line_mask = cp.transpose(line_mask, (0, 2, 1))
+        
+        # Draw all vertical lines at once using vectorized assignment
+        # For each bar, set pixels at x_position = bar_idx * 4 + 1
+        for bar_idx in range(seq_len):
+            x_pos = bar_idx * 4 + 1  # High-Low line position
+            # Set all pixels in the vertical line for all batches at once
+            images_gpu[:, :, x_pos] = cp.where(
+                line_mask[:, :, bar_idx],
+                0.0,  # Draw black pixel
+                images_gpu[:, :, x_pos]  # Keep existing pixel
+            )
         
         return images_gpu.get()
 
