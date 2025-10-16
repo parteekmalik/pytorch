@@ -384,3 +384,33 @@ def get_storage_info(file_path: str, storage_format: str) -> Dict:
             'metadata': dict(f.attrs)
         }
 
+
+def load_single_image(file_path: str, image_index: int = 0) -> np.ndarray:
+    """
+    Load a single image from HDF5 storage with automatic format detection.
+    
+    Args:
+        file_path: Path to HDF5 file
+        image_index: Index of image to load (default: 0)
+        
+    Returns:
+        image: (height, width) grayscale image
+        
+    Note:
+        Automatically detects storage format and recreates images from
+        coordinates if using index_based_implicit format.
+    """
+    with h5py.File(file_path, 'r') as f:
+        storage_format = f.attrs.get('storage_format', 'coordinates')
+        
+        if storage_format == 'index_based_implicit':
+            # New format: load coordinates and recreate image
+            coordinates = f['coordinates'][image_index]
+            seq_len = f['coordinates'].shape[1]
+            height = f.attrs.get('resolution', [0, 500])[1]
+            metadata = {'height': height, 'seq_len': seq_len, 'width': seq_len * 4}
+            return recreate_image_from_coordinates_static(coordinates, metadata)
+        else:
+            # Old format: direct image loading
+            return f['images'][image_index]
+
