@@ -250,19 +250,19 @@ class Renderer:
         # logger.info(f"Completed rendering {batch_size} images")
         return result
     
-    def render_ohlc_batch_coordinates(self, ohlc_sequences: np.ndarray) -> np.ndarray:
+    def render_ohlc_batch_coordinates(self, ohlc_sequences: np.ndarray, height: int) -> np.ndarray:
         """
         Render OHLC bars and return compressed Y-coordinate format.
         
         Args:
             ohlc_sequences: (batch_size, seq_len, 4) OHLC data
+            height: Image height in pixels
             
         Returns:
             Compressed coordinates: (batch_size, seq_len, 4) where each row is:
             [opens_y, highs_y, lows_y, closes_y]
         """
         batch_size, seq_len, _ = ohlc_sequences.shape
-        height = self.height
         
         # Convert to CuPy
         ohlc_gpu = cp.asarray(ohlc_sequences)

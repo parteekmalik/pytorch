@@ -112,7 +112,8 @@ def _create_images_storage(
             import time
             render_start = time.time()
             batch_coordinates = renderer.render_ohlc_batch_coordinates(
-                np.array(batch_sequences)
+                np.array(batch_sequences),
+                height=resolution['height']
             )
             render_time = time.time() - render_start
             total_render_time += render_time
