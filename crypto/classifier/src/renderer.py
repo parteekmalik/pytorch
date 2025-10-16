@@ -142,16 +142,15 @@ class Renderer:
         # Transpose to (batch_size, height, seq_len) for easier indexing
         line_mask = cp.transpose(line_mask, (0, 2, 1))
         
-        # Draw all vertical lines at once using vectorized assignment
-        # For each bar, set pixels at x_position = bar_idx * 4 + 1
+        # Draw all vertical lines with optimized GPU operations
+        # Pre-compute x-positions on GPU
+        x_positions = cp.arange(seq_len) * 4 + 1  # (seq_len,)
+        
+        # Draw all vertical lines using direct assignment (no cp.where needed)
         for bar_idx in range(seq_len):
-            x_pos = bar_idx * 4 + 1  # High-Low line position
-            # Set all pixels in the vertical line for all batches at once
-            images_gpu[:, :, x_pos] = cp.where(
-                line_mask[:, :, bar_idx],
-                0.0,  # Draw black pixel
-                images_gpu[:, :, x_pos]  # Keep existing pixel
-            )
+            x_pos = int(x_positions[bar_idx])  # Single CPU-GPU sync per bar
+            # Direct assignment - mask already indicates where to draw
+            images_gpu[:, :, x_pos][line_mask[:, :, bar_idx]] = 0.0
         
         return images_gpu.get()
 

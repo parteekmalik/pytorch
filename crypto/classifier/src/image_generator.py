@@ -92,21 +92,43 @@ def _create_images_storage(
     logger.info("Using GPU batch rendering for storage")
     gpu_batch_size = rendering_config.get('gpu_batch_size', 1000)
     
+    # Timing variables for profiling
+    total_render_time = 0.0
+    total_write_time = 0.0
+    total_transfer_time = 0.0
+    
     # Create global progress bar for all images
     with tqdm(total=len(sequences), desc="Generating images", unit="img") as pbar:
         for start_idx in range(0, len(sequences), gpu_batch_size):
             end_idx = min(start_idx + gpu_batch_size, len(sequences))
             batch_sequences = sequences[start_idx:end_idx]
             
-            # Render entire batch on GPU in parallel (vectorized)
+            # Time rendering only
+            import time
+            render_start = time.time()
             images = renderer.render_ohlc_batch_gpu(batch_sequences, resolution)
+            render_time = time.time() - render_start
+            total_render_time += render_time
             
+            # Time storage write
+            write_start = time.time()
             writer.write_batch(images, batch_sequences)
+            write_time = time.time() - write_start
+            total_write_time += write_time
             
             # Update global progress bar
             pbar.update(len(images))
     
     writer.close()
+    
+    # Log timing breakdown
+    total_time = total_render_time + total_write_time
+    logger.info(f"Timing breakdown for {len(sequences)} images:")
+    logger.info(f"  Render time: {total_render_time:.3f}s ({total_render_time/total_time*100:.1f}%)")
+    logger.info(f"  Write time: {total_write_time:.3f}s ({total_write_time/total_time*100:.1f}%)")
+    logger.info(f"  Total time: {total_time:.3f}s")
+    logger.info(f"  Average speed: {len(sequences)/total_time:.1f} img/sec")
+    
     logger.info(f"Created {len(sequences)} images in {storage_config['format']} format")
     return output_path
 
