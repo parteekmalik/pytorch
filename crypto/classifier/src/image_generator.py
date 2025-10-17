@@ -1,12 +1,8 @@
-"""
-GPU-accelerated image generation (GPU required).
-"""
 import numpy as np
-import os
-from typing import Tuple, Dict, Optional, List
+from typing import Dict, Optional, List
 import pandas as pd
 from tqdm import tqdm
-from .utils import setup_logger, check_gpu_availability, get_array_module
+from .utils import setup_logger, check_gpu_availability
 from .image_storage import ImageStorageWriter
 from .renderer import Renderer
 
@@ -25,10 +21,9 @@ def create_images_from_data(
     metadata: Optional[Dict] = None,
     rendering_config: Optional[Dict] = None
 ) -> str:
-    """Generate images from price data using simplified index-based storage."""
     
     if resolution is None:
-        resolution = {'height': 500}  # Width auto-calculated
+        resolution = {'height': 500}
     
     if storage_config is None:
         storage_config = {'format': 'hdf5', 'mode': 'single', 'images_per_file': 50000}
@@ -38,10 +33,8 @@ def create_images_from_data(
     
     from .data_loader import create_ohlc_sequences
     
-    # Extract original OHLC data
     original_data = data[['Open', 'High', 'Low', 'Close']].values
     
-    # Create sequences (these are just views/slices for rendering)
     sequences = create_ohlc_sequences(data, seq_len)
     
     renderer = Renderer()
@@ -49,10 +42,9 @@ def create_images_from_data(
     if metadata is None:
         metadata = {}
     
-    # Pass both sequences and original_data
     return _create_images_storage(
         sequences=sequences,
-        original_data=original_data,  # NEW: Pass original data
+        original_data=original_data,
         output_path=output_path,
         resolution=resolution,
         storage_config=storage_config,
@@ -64,7 +56,7 @@ def create_images_from_data(
 
 def _create_images_storage(
     sequences: List[np.ndarray],
-    original_data: np.ndarray,  # NEW: Pass original data
+    original_data: np.ndarray,
     output_path: str,
     resolution: Dict[str, int],
     storage_config: Dict,
@@ -72,7 +64,6 @@ def _create_images_storage(
     renderer: Renderer,
     rendering_config: Dict
 ) -> str:
-    """Generate images using simplified index-based storage (no indices)."""
     
     seq_len = len(sequences[0])
     num_images = len(sequences)
@@ -82,11 +73,9 @@ def _create_images_storage(
     logger.info(f"Storage format: hdf5 (index-based implicit, no compression)")
     logger.info(f"Resolution: {seq_len * 4}x{resolution['height']} (width auto-calculated)")
     
-    # Add metadata
     metadata['seq_len'] = seq_len
     metadata['total_data_points'] = len(original_data)
     
-    # Initialize storage writer
     writer = ImageStorageWriter(
         output_path=output_path,
         storage_format=storage_config['format'],
@@ -96,7 +85,6 @@ def _create_images_storage(
         metadata=metadata
     )
     
-    # Generate coordinates (indices are implicit)
     total_render_time = 0
     total_write_time = 0
     coordinates_list = []
@@ -108,30 +96,25 @@ def _create_images_storage(
             end_idx = min(start_idx + gpu_batch_size, num_images)
             batch_sequences = sequences[start_idx:end_idx]
             
-            # Render coordinates
             import time
             render_start = time.time()
             batch_coordinates = renderer.render_ohlc_batch_coordinates(
                 np.array(batch_sequences),
                 height=resolution['height']
             )
-            render_time = time.time() - render_start
-            total_render_time += render_time
+            total_render_time += time.time() - render_start
             
-            # Collect coordinates (no indices needed)
             for i in range(len(batch_coordinates)):
                 coordinates_list.append(batch_coordinates[i])
             
             pbar.update(len(batch_coordinates))
     
-    # Write original data + coordinates (no indices)
     import time
     write_start = time.time()
     writer.write_with_original_data(original_data, coordinates_list)
     writer.close()
     total_write_time = time.time() - write_start
     
-    # Log timing
     total_time = total_render_time + total_write_time
     logger.info(f"Timing breakdown for {num_images} images:")
     logger.info(f"  Render time: {total_render_time:.3f}s ({total_render_time/total_time*100:.1f}%)")

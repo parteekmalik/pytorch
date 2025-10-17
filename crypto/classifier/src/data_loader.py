@@ -1,6 +1,3 @@
-"""
-Data downloading and caching module for cryptocurrency data from Binance.
-"""
 import pandas as pd
 import numpy as np
 import requests
@@ -15,20 +12,10 @@ logger = setup_logger(__name__)
 
 
 def create_ohlc_sequences(ohlc_data: np.ndarray, seq_len: int) -> np.ndarray:
-    """
-    Create sequences of OHLC data for candlestick rendering.
-    
-    Args:
-        ohlc_data: 2D array (n_samples, 4) with [Open, High, Low, Close]
-        seq_len: Number of candles per sequence
-        
-    Returns:
-        3D array (n_sequences, seq_len, 4) with OHLC data
-    """
     n_samples = len(ohlc_data)
     n_sequences = n_samples - seq_len + 1
     
-    sequences = np.zeros((n_sequences, seq_len, 4), dtype=np.float32)  # float32
+    sequences = np.zeros((n_sequences, seq_len, 4), dtype=np.float32)
     for i in range(n_sequences):
         sequences[i] = ohlc_data[i:i + seq_len]
     
@@ -36,16 +23,6 @@ def create_ohlc_sequences(ohlc_data: np.ndarray, seq_len: int) -> np.ndarray:
 
 
 def create_price_sequences(price_data: np.ndarray, seq_len: int) -> np.ndarray:
-    """
-    Create sliding window sequences from price data.
-    
-    Args:
-        price_data: Array of price values
-        seq_len: Length of each sequence
-        
-    Returns:
-        Array of sequences with shape (n_sequences, seq_len)
-    """
     sequences = []
     for i in range(len(price_data) - seq_len + 1):
         sequence = price_data[i:i + seq_len]
@@ -60,19 +37,6 @@ def _download_single_month(
     month: str,
     cache_dir: str
 ) -> Optional[pd.DataFrame]:
-    """
-    Download data for a single month from Binance with caching.
-    
-    Args:
-        symbol: Trading pair symbol (e.g., 'BTCUSDT')
-        interval: Time interval (e.g., '1m', '5m', '1h')
-        year: Year as string
-        month: Month as string (will be zero-padded)
-        cache_dir: Directory to cache downloaded ZIP files
-        
-    Returns:
-        DataFrame with OHLCV data or None if download fails
-    """
     month_padded = month.zfill(2)
     
     os.makedirs(cache_dir, exist_ok=True)
@@ -139,22 +103,6 @@ def download_crypto_data(
     end_date_str: str,
     cache_dir: str
 ) -> pd.DataFrame:
-    """
-    Download cryptocurrency data from Binance for a date range.
-    
-    Args:
-        symbol: Trading pair symbol (e.g., 'BTCUSDT')
-        interval: Time interval (e.g., '1m', '5m', '1h')
-        start_date_str: Start date in 'YYYY-MM' format
-        end_date_str: End date in 'YYYY-MM' format
-        cache_dir: Directory to cache downloaded files
-        
-    Returns:
-        DataFrame with Close price column
-        
-    Raises:
-        ValueError: If no data could be downloaded
-    """
     logger.info(f"Downloading {symbol} data from {start_date_str} to {end_date_str}")
     
     try:
@@ -182,9 +130,8 @@ def download_crypto_data(
         
         combined_df = pd.concat(all_data, ignore_index=True)
         
-        # Return OHLC data as float32 (natural format)
         ohlc_columns = ['Open', 'High', 'Low', 'Close']
-        result = combined_df[ohlc_columns].astype(np.float32)  # Use float32
+        result = combined_df[ohlc_columns].astype(np.float32)
         
         logger.info(f"Downloaded {len(result)} data points with columns: {ohlc_columns}")
         return result

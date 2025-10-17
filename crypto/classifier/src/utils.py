@@ -1,6 +1,3 @@
-"""
-Utilities for GPU detection, logging, and shared configurations.
-"""
 import logging
 import os
 from pathlib import Path
@@ -11,12 +8,6 @@ warnings.filterwarnings('ignore')
 
 
 def check_gpu_availability() -> Tuple[bool, str]:
-    """
-    Check if GPU is available via CuPy.
-    
-    Returns:
-        Tuple of (is_available, backend_name)
-    """
     try:
         import cupy as cp
         cp.cuda.Device(0).compute_capability
@@ -26,13 +17,6 @@ def check_gpu_availability() -> Tuple[bool, str]:
 
 
 def get_array_module():
-    """
-    Get the appropriate array module (CuPy if available, else NumPy).
-    Disables GPU in multiprocessing worker processes to avoid CUDA errors.
-    
-    Returns:
-        Module for array operations (cp or np)
-    """
     import multiprocessing
     import numpy as np
     
@@ -48,17 +32,6 @@ def get_array_module():
 
 
 def setup_logger(name: str, log_file: str = None, level=logging.INFO) -> logging.Logger:
-    """
-    Set up a logger with console and file handlers.
-    
-    Args:
-        name: Logger name
-        log_file: Optional log file path
-        level: Logging level
-        
-    Returns:
-        Configured logger
-    """
     logger = logging.getLogger(name)
     logger.setLevel(level)
     
@@ -83,18 +56,5 @@ def setup_logger(name: str, log_file: str = None, level=logging.INFO) -> logging
     return logger
 
 
-def ensure_dir(path: str) -> Path:
-    """
-    Ensure directory exists, create if it doesn't.
-    
-    Args:
-        path: Directory path
-        
-    Returns:
-        Path object
-    """
-    path_obj = Path(path)
-    path_obj.mkdir(parents=True, exist_ok=True)
-    return path_obj
-
-
+def ensure_dir(directory: str) -> None:
+    os.makedirs(directory, exist_ok=True)

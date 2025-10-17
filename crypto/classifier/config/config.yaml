@@ -1,22 +1,20 @@
-# Crypto Classifier Pipeline Configuration
-
 data:
   symbol: BTCUSDT
   interval: 1m
-  start_date: '2020-01'
-  end_date: '2020-01'
-  max_sequences: 2000  # Set to a number (e.g., 1000) to limit for testing, null for all
+  start_date: '2018-01'
+  end_date: '2018-01'
+  max_sequences: 2000
 
 image:
-  seq_len: 100  # Number of bars per image
+  seq_len: 100
   resolution:
-    height: 500  # Width auto-calculated: seq_len * 4
+    height: 500
   colors:
-    bullish: 0.2  # Dark gray for bullish candles
-    bearish: 0.0  # Black for bearish candles
+    bullish: 0.2
+    bearish: 0.0
   rendering:
     mode: gpu
-    gpu_batch_size: 2000  # Can handle more with shared memory
+    gpu_batch_size: 2000
 
 paths:
   raw_data: data/raw
@@ -26,6 +24,4 @@ paths:
 
 pipeline:
   skip_existing_images: true
-  num_workers: -1  # -1 means cpu_count() - 1
-
-
+  num_workers: -1

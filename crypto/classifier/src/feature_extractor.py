@@ -1,5 +1,3 @@
-"""Feature extraction utilities for HDF5 image datasets."""
-
 import h5py
 import numpy as np
 import cv2
@@ -9,21 +7,6 @@ from tensorflow.keras.applications.vgg16 import preprocess_input
 
 
 def extract_features_from_hdf5_batched(hdf5_path, model, size=(224, 224), batch_size=1000):
-    """
-    Extract VGG16 features from HDF5 file in batches to avoid RAM issues.
-    
-    Args:
-        hdf5_path (Path): Path to HDF5 file containing images
-        model: Keras model for feature extraction
-        size (tuple): Target size for resizing images (default: (224, 224))
-        batch_size (int): Number of images to process at once (default: 1000)
-    
-    Returns:
-        dict: Dictionary of {image_id: feature_vector}
-    
-    Raises:
-        FileNotFoundError: If HDF5 file doesn't exist
-    """
     print(f"Extracting features from HDF5: {hdf5_path}")
     
     if not hdf5_path.exists():

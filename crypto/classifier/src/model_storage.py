@@ -1,6 +1,3 @@
-"""
-Model storage and versioning utilities for managing trained models.
-"""
 import joblib
 import os
 import json
@@ -18,18 +15,6 @@ def save_model(
     metadata: Optional[Dict] = None,
     model_name: Optional[str] = None
 ) -> str:
-    """
-    Save a model with metadata and timestamp.
-    
-    Args:
-        model: The model object to save
-        model_dir: Directory to save models
-        metadata: Optional dictionary with training info (metrics, config, etc.)
-        model_name: Optional custom model name (defaults to timestamp)
-        
-    Returns:
-        Path to saved model file
-    """
     ensure_dir(model_dir)
     
     if model_name is None:
@@ -56,22 +41,12 @@ def save_model(
 
 
 def load_model(model_path: str) -> Tuple[Any, Dict]:
-    """
-    Load a model and its metadata.
-    
-    Args:
-        model_path: Path to the model file (.pkl)
-        
-    Returns:
-        Tuple of (model, metadata_dict)
-    """
     if not os.path.exists(model_path):
         raise FileNotFoundError(f"Model not found: {model_path}")
     
     model = joblib.load(model_path)
     logger.info(f"Model loaded from: {model_path}")
     
-    model_name = Path(model_path).stem
     metadata_path = model_path.replace('.pkl', '_metadata.json')
     
     metadata = {}
@@ -84,15 +59,6 @@ def load_model(model_path: str) -> Tuple[Any, Dict]:
 
 
 def list_models(model_dir: str) -> List[Dict]:
-    """
-    List all saved models with their metadata.
-    
-    Args:
-        model_dir: Directory containing saved models
-        
-    Returns:
-        List of dictionaries containing model info
-    """
     if not os.path.exists(model_dir):
         logger.warning(f"Model directory does not exist: {model_dir}")
         return []
@@ -125,15 +91,6 @@ def list_models(model_dir: str) -> List[Dict]:
 
 
 def get_latest_model(model_dir: str) -> Optional[Tuple[Any, Dict]]:
-    """
-    Load the most recently saved model.
-    
-    Args:
-        model_dir: Directory containing saved models
-        
-    Returns:
-        Tuple of (model, metadata) or None if no models found
-    """
     models = list_models(model_dir)
     
     if not models:
@@ -144,5 +101,3 @@ def get_latest_model(model_dir: str) -> Optional[Tuple[Any, Dict]]:
     logger.info(f"Loading latest model: {latest['name']}")
     
     return load_model(latest['path'])
-
-

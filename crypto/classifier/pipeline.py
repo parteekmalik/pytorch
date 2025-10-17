@@ -1,6 +1,3 @@
-"""
-Main pipeline orchestration script for cryptocurrency data processing.
-"""
 import os
 import yaml
 from datetime import datetime
@@ -21,12 +18,10 @@ def load_config(config_path: str = 'config/config.yaml') -> dict:
 def run_pipeline(config_path: str = 'config/config.yaml'):
     config = load_config(config_path)
     
-    # Get absolute path to classifier directory (where pipeline.py lives)
     base_dir = Path(__file__).parent
     
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     
-    # Resolve log path relative to base_dir
     log_path = base_dir / config['paths']['logs'] / f'pipeline_{timestamp}.log'
     logger = setup_logger('pipeline', log_file=str(log_path))
     
@@ -34,11 +29,10 @@ def run_pipeline(config_path: str = 'config/config.yaml'):
     logger.info("Starting Crypto Classifier Pipeline")
     logger.info("="*60)
     
-    gpu_available, backend = check_gpu_availability()
+    _, backend = check_gpu_availability()
     logger.info(f"Compute Backend: {backend}")
     
-    # Ensure all directories exist, resolved relative to base_dir
-    for path_name, path_value in config['paths'].items():
+    for _, path_value in config['paths'].items():
         abs_path = base_dir / path_value
         ensure_dir(str(abs_path))
         logger.info(f"Ensured directory: {abs_path}")
@@ -49,80 +43,61 @@ def run_pipeline(config_path: str = 'config/config.yaml'):
     try:
         logger.info("Step 1: Downloading cryptocurrency data...")
         
-        # Resolve cache_dir for data download
-        cache_dir = base_dir / config['paths']['raw_data']
+        raw_data_path = base_dir / config['paths']['raw_data']
+        ensure_dir(str(raw_data_path))
         
         data = download_crypto_data(
             symbol=data_config['symbol'],
             interval=data_config['interval'],
             start_date_str=data_config['start_date'],
             end_date_str=data_config['end_date'],
-            cache_dir=str(cache_dir)
+            cache_dir=str(raw_data_path)
         )
+        
         logger.info(f"Downloaded {len(data)} data points")
         
-        logger.info("Step 2: Generating images from price sequences...")
+        if data_config.get('max_sequences'):
+            max_seq = data_config['max_sequences']
+            logger.info(f"Limiting to {max_seq} sequences for testing")
+            data = data.iloc[:max_seq + config['image']['seq_len'] - 1]
+            logger.info(f"Truncated to {len(data)} data points")
+        
+        logger.info("Step 2: Generating images...")
+        
+        processed_data_path = base_dir / config['paths']['processed_data']
+        ensure_dir(str(processed_data_path))
+        
         image_config = config['image']
-        
-        # Apply max_sequences limit if specified (limit data before processing)
-        max_sequences = data_config.get('max_sequences', None)
-        if max_sequences is not None and max_sequences > 0:
-            # Calculate how many data points we need for max_sequences
-            seq_len = image_config['seq_len']
-            max_data_points = max_sequences + seq_len - 1
-            if len(data) > max_data_points:
-                data = data.iloc[:max_data_points]
-                logger.info(f"Limited data to {len(data)} points for {max_sequences} sequences")
-        
-        base_name = (
-            f"crypto_{data_config['symbol']}_{data_config['interval']}_"
-            f"{data_config['start_date']}_{data_config['end_date']}"
-        )
-        
-        # Always use HDF5 format
-        processed_dir = base_dir / config['paths']['processed_data']
-        output_path = processed_dir / (base_name + '.h5')
+        output_path = processed_data_path / f"{data_config['symbol']}_{data_config['interval']}_{timestamp}.h5"
         
         metadata = {
             'symbol': data_config['symbol'],
             'interval': data_config['interval'],
             'start_date': data_config['start_date'],
-            'end_date': data_config['end_date']
+            'end_date': data_config['end_date'],
+            'total_data_points': len(data),
+            'pipeline_timestamp': timestamp
         }
         
-        images_path = create_images_from_data(
+        result_path = create_images_from_data(
             data=data,
             output_path=str(output_path),
             seq_len=image_config['seq_len'],
-            resolution={'height': image_config['resolution']['height']},
-            storage_config={'format': 'hdf5', 'mode': 'single'},
+            resolution=image_config['resolution'],
             metadata=metadata,
-            rendering_config=image_config.get('rendering', {'mode': 'auto', 'gpu_batch_size': 1000, 'fallback_on_error': True})
+            rendering_config=image_config['rendering']
         )
         
-        # Get HDF5 file info
-        from src.image_storage import get_storage_info
-        info = get_storage_info(images_path, 'hdf5')
-        image_count = info['num_images']
-        file_size_mb = info.get('file_size_mb', 0)
-        logger.info(f"Created {image_count} images in HDF5 format")
-        logger.info(f"File size: {file_size_mb:.2f} MB")
+        logger.info(f"✓ Images generated successfully: {result_path}")
         
         logger.info("="*60)
         logger.info("Pipeline completed successfully!")
         logger.info("="*60)
-        logger.info(f"Results:")
-        logger.info(f"  - Data points: {len(data)}")
-        logger.info(f"  - Images: {image_count}")
-        logger.info(f"  - Output: {images_path}")
-        logger.info(f"  - Log: {log_path}")
         
     except Exception as e:
-        logger.error(f"Pipeline failed: {e}", exc_info=True)
+        logger.error(f"Pipeline failed: {e}")
         raise
 
 
 if __name__ == "__main__":
     run_pipeline()
-
-
